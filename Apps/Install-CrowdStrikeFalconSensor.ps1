@@ -41,7 +41,7 @@ function Test-Service {
             Write-Verbose "$App has been installed."
         } else {
             Write-Verbose "$App has not been installed, please attempt manual installation."
-            exitv
+            exit
         }
     } elseif (Get-Service $Service @EA_Silent) {
         Write-Verbose "$App is already installed, terminating script"
