@@ -3,37 +3,78 @@
     Automates the deployment of the Aline eMAR application suite and its dependencies.
 
 .DESCRIPTION
-    This script performs a fully automated installation of the Aline eMAR suite, including all required drivers and supporting applications. 
-    It executes the following steps:
-    1. Creates a temporary working directory for installation files.
-    2. Downloads the Aline eMAR installation package (ZIP archive) from a specified URL.
-    3. Extracts the package contents.
-    4. Imports required registry settings for the eMAR environment.
-    5. Installs the following components in order:
-        - Microsoft ODBC Driver for SQL Server
-        - Microsoft SQL Command Line Utilities
-        - ACCUflo
-        - ACCUDrug
-        - ACCULogin
-        - ACCUsummary
-        - ACCUSync
-        - ACUUfloUpdaterClient
-    6. Provides detailed logging for each step and error handling.
-    7. Cleans up the temporary installation directory after completion.
+    This script performs a fully automated/unattended installation of the Aline eMAR suite including all prerequisite
+    drivers and supporting applications with comprehensive error handling and detailed logging.
+
+    1. ENVIRONMENT PREPARATION:
+       - Creates temporary working directory (C:\Temp\eMAR) for installation files
+       - Downloads the complete eMAR installation package (ZIP archive) from specified URL
+       - Extracts package contents preserving directory structure
+       - Supports optional log preservation with -KeepLog parameter
+
+    2. REGISTRY CONFIGURATION:
+       - Imports essential registry settings (accuflo6x.reg) required for eMAR environment
+       - Sets up necessary system configurations and application paths
+
+    3. COMPONENT INSTALLATION SEQUENCE:
+       The script installs components in this specific order to ensure dependencies are met:
+       a) Microsoft ODBC Driver for SQL Server (prerequisite for database connectivity)
+       b) Microsoft SQL Command Line Utilities (required for database operations)
+       c) Core eMAR Applications (installed sequentially):
+          - ACCUflo (main medication management application)
+          - ACCUDrug (drug database and reference)
+          - ACCULogin (authentication and user management)
+          - ACCUsummary (reporting and analytics)
+          - ACCUSync (data synchronization service)
+          - ACCUfloUpdaterClient (automatic update mechanism)
+
+    4. INSTALLATION METHODOLOGY:
+       - MSI Installers: Uses msiexec.exe with quiet mode (/qn) and verbose logging (/l*v)
+       - EXE Installers: Handles wrapper executables that contain embedded MSI packages
+         using /v"MSI_ARGS" syntax to pass through installation parameters
+       - Modular Install-App function handles both installer types with proper argument validation
+       - Each installation generates detailed log files for troubleshooting
+
+    5. ERROR HANDLING & LOGGING:
+       - Comprehensive try/catch blocks throughout execution flow
+       - Individual log files for each application installation (Log_ApplicationName.log)
+       - Exit code validation for all installation processes
+       - Clear success/failure messaging with specific error details
+       - When -KeepLog switch is used, logs are copied to SystemDrive\Logs before temporary directory cleanup
+
+    6. CLEANUP OPERATIONS:
+       - Automatic removal of temporary installation directory upon successful completion
+       - Conditional log preservation based on -KeepLog parameter
+
+.PARAMETER Path
+Root installation directory where temporary files are stored during installation.
+
+.PARAMETER PathZip  
+Full path to the downloaded ZIP package.
+
+.PARAMETER URL
+Download source URL for the eMAR installation package.
+
+.PARAMETER KeepLog
+Optional switch to preserve installation logs files by copying to SystemDrive\Logs directory before cleanup.
+Useful for SYSTEM account executions and post-installation troubleshooting.
 
 .NOTES
     Developer  : Tawhid Chowdhury [Proactive Services Manager]
     Contributor: Eugene Saladaga [NOC Engineer]
     Created    : 2025-08-19
     Updated    : 2025-08-26
-    Version    : 6.0
+    Version    : 9.0
 #>
 
 #region PARAM_VAR ----------------------------------------------------------------------------------------------------------
 
-$Path    = "C:\Temp\eMAR"
-$PathZip = "$Path\Aline_eMAR_6.12.11.zip"
-$URL     = "https://transfer.hostmyit.com/ninja/EL/Aline_eMAR_v6.12.11.zip"
+param (
+    [string]$Path    = "",
+    [string]$PathZip = "",
+    [string]$URL     = "",
+    [switch]$KeepLog
+)
 
 #endregion -----------------------------------------------------------------------------------------------------------------	
 
@@ -57,8 +98,8 @@ function Install-eMAR {
     #>
     #endregion -------------------------------------------------------------------------------------------------------------
 
-    $Apps = @(
-        # MSI Installers
+    $Apps = @( # Array of apps, uses wildcard in Path key to run regardless of version as long as filename prefix is correct
+        # MSI
         [PSCustomObject]@{
             Name = "ODBC Driver"
             Path = "$Path\msodbcsql_*.msi"
@@ -76,14 +117,13 @@ function Install-eMAR {
                 "IACCEPTMSSQLCMDLNUTILSLICENSETERMS=YES"
             )
         },
-
-        # EXE Installer (separated EXE and MSI args)
+        # EXE (separated EXE and MSI args)
         [PSCustomObject]@{
             Name = "ACCUflo"
             Path = "$Path\Accuflo_Setup_x64_*.exe"
             Args = @{
-                ArgsEXE = @("/s")
-                ArgsMSI = @(
+                EXE = @("/s")
+                MSI = @(
                     "/qn"
                     "CS_SERVICE_PASSWORD_IS_VALID=1"
                     "REGISTRY_ACCUSYNC_HOSTNAME=https://accusync-a.creativestrategiesus.com"
@@ -96,40 +136,40 @@ function Install-eMAR {
             Name = "ACCUDrug"
             Path = "$Path\ACCUDrug_Setup_x64_*.exe"
             Args = @{
-                ArgsEXE = @("/clone_wait", "/s")
-                ArgsMSI = @("/qn")
+                EXE = @("/clone_wait", "/s")
+                MSI = @("/qn")
             }
         },
         [PSCustomObject]@{
             Name = "ACCULogin"
             Path = "$Path\ACCULogin_Setup_x64_*.exe"
             Args = @{
-                ArgsEXE = @("/clone_wait", "/s")
-                ArgsMSI = @("/qn")
+                EXE = @("/clone_wait", "/s")
+                MSI = @("/qn")
             }
         },
         [PSCustomObject]@{
             Name = "ACCUsummary"
             Path = "$Path\ACCUsummary_Setup_x64_*.exe"
             Args = @{
-                ArgsEXE = @("/clone_wait", "/s")
-                ArgsMSI = @("/qn")
+                EXE = @("/clone_wait", "/s")
+                MSI = @("/qn")
             }
         },
         [PSCustomObject]@{
             Name = "ACCUSync"
             Path = "$Path\ACCUSync_Setup_x64_*.exe"
             Args = @{
-                ArgsEXE = @("/clone_wait", "/s")
-                ArgsMSI = @("/qn")
+                EXE = @("/clone_wait", "/s")
+                MSI = @("/qn")
             }
         },
         [PSCustomObject]@{
             Name = "ACCUfloUpdaterClient"
             Path = "$Path\UpdaterClient_Setup_x64_*.exe"
             Args = @{
-                ArgsEXE = @("/clone_wait", "/s")
-                ArgsMSI = @("/qn")
+                EXE = @("/clone_wait", "/s")
+                MSI = @("/qn")
             }
         }
     )
@@ -138,25 +178,13 @@ function Install-eMAR {
         Write-Host "[INFO] Importing registry."
         reg import "$Path\accuflo6x.reg" > $null 2>&1
         Write-Host "[PASS] Registry imported successfully."
-
-        # Loop through each application and install
-        foreach ($App in $Apps) {
-            $Log = "$Path\Log_$($App.Name).log"
-            Write-Host "[INFO] Installing $($App.Name)."
-            switch (Get-ChildItem -Path $App.Path | Select-Object -First 1 -ExpandProperty FullName) {
-                { $_ -like "*.exe" } {
-                    $ArgsList = $App.Args.ArgsEXE + "/v`"$($App.Args.ArgsMSI -join ' ') /l*v `"$Log`"`"" # Combine ArgsEXE + ArgsMSI arguments into one string and add dynamic logging path
-                    $Process  = Start-Process -FilePath $_ -ArgumentList $ArgsList -Wait -NoNewWindow -PassThru -EA Stop
-                    if ($Process.ExitCode -ne 0) { throw "[FAIL] $($App.Name) installation failed with exit code $($Process.ExitCode). See $Log" }
-                }
-                { $_ -like "*.msi" } {
-                    $ArgList = @("/i", "`"$_`"") + $App.Args + @("/l*v", "`"$Log`"") # Create msiexec arguments array with proper quoting for paths with spaces if they exist and add dynamic logging path
-                    $Process = Start-Process -FilePath "msiexec.exe" -ArgumentList $ArgList -Wait -NoNewWindow -PassThru -EA Stop
-                    if ($Process.ExitCode -ne 0) { throw "[FAIL] $($App.Name) installation failed with exit code $($Process.ExitCode). See $Log" }
-                } default { throw "Unknown installer type for $($App.Name)" }
-            }
+        foreach ($App in $Apps) { # Loop through each application and attempt to install
+            $LogFile   = "$Path\Log_$($App.Name).log"
+            $Installer = (Get-ChildItem -Path $App.Path | Select-Object -First 1 -ExpandProperty FullName)
+            Install-App -Name $App.Name -Path $Installer -InstallArgs $App.Args -LogPath $LogFile
+            if ($KeepLog) { Copy-Item $LogFile -Destination "$env:SystemDrive\Logs" -Force -EA SilentlyContinue }
         }
-        Write-Host "[PASS] All components have attempted install." ; $Global:Attempted = $true
+        Write-Host "[PASS] All components have attempted installation."
     } catch {
         Write-Host "[FAIL] $($_.Exception.Message)" ; throw
     }
@@ -234,6 +262,63 @@ function Get-File {
     if (-not $Downloaded) { throw "[FAIL] All download methods failed, terminating script." }
 }
 
+function Install-App {
+
+    #region LOGIC -----------------------------------------------------------------------------------------------------------
+    <#
+    [SUMMARY]
+    Installs an application from a specified path with given arguments and logs the installation process.
+
+    [PARAMETERS]
+    - $Name: The name of the application to install.
+    - $Path: The path to the installer file.
+    - $InstallArgs: The arguments to pass to the installer which will accept both arrays and hashtables for EXE/MSI.
+    - $LogPath: The path to save the installation log file.
+
+    [LOGIC]     
+    1. Checks the file extension of the installer to determine if it's an EXE or MSI.
+    2. Constructs the appropriate argument list based on the installer type.
+       - For EXE, combines EXE and MSI arguments into a single string with logging parameters.
+       - For MSI, combines the MSI arguments into an array with logging parameters.
+    3. Starts the installation process and waits for it to complete.
+    4. Checks the exit code of the installation process to determine success or failure.
+    5. Logs the installation process and any errors encountered.
+    6. Throws an error if the installation fails.
+    #>
+    #endregion -------------------------------------------------------------------------------------------------------------    
+
+    param(
+        [string]$Name,
+        [string]$Path,
+        $InstallArgs,
+        [string]$LogPath
+    )
+
+    try {
+        Write-Host "[INFO] Installing $Name."
+        switch ([System.IO.Path]::GetExtension($Path).ToLower()) {
+            ".exe" {
+                if ($InstallArgs.EXE.Count -eq 0 -or $InstallArgs.MSI.Count -eq 0) { # Validate EXE and MSI args
+                    throw "[FAIL] Invalid arguments supplied for EXE installer. EXE or MSI arguments are missing or empty."
+                }
+                $ArgList = $InstallArgs.EXE + "/v`"$($InstallArgs.MSI -join ' ') /l*v `"$LogPath`"`"" # Combine EXE and MSI arguments into single string
+                $Process = Start-Process -FilePath $Path -ArgumentList $ArgList -Wait -NoNewWindow -PassThru
+            }
+            ".msi" {
+                if (-not $InstallArgs) { $InstallArgs = @() } # If array is null or empty, initialize empty array
+                $ArgList = @("/i", "`"$Path`"") + $InstallArgs + @("/l*v", "`"$LogPath`"") # Combine arrays for MSI arguments
+                $Process = Start-Process -FilePath "msiexec.exe" -ArgumentList $ArgList -Wait -NoNewWindow -PassThru
+            } default {
+                throw "[FAIL] Unknown installer type: $Extension"
+            }
+        }
+        if ($Process.ExitCode -ne 0) { throw "[FAIL] Installation failed with exit code $($Process.ExitCode). See $LogPath" }
+    }
+    catch {
+        throw "[FAIL] $Name installation failed: $($_.Exception.Message)"
+    }
+}
+
 function Set-Dir {
 
     #region LOGIC -----------------------------------------------------------------------------------------------------------
@@ -293,14 +378,17 @@ function Set-Dir {
 
 #region EXECUTIONS ---------------------------------------------------------------------------------------------------------
 
-try {
+try { # Prepare environment and download package
     Write-Host "[INFO] Preparing environment."
     if (!(Test-Path $Path)) { Set-Dir -Path $Path -Create }
     Write-Host "[INFO] Downloading package."
     if (!(Test-Path $PathZip)) { Get-File -URL $URL -Destination $PathZip }
+    if ($KeepLog) { 
+        Write-Host "[INFO] KeepLog switch delared, copying logfile to $($env:SystemDrive)\Logs."
+        Set-Dir -Path "$env:SystemDrive\Logs" -Create
+    }
 } catch { Write-Host "[FAIL] $($_.Exception.Message)" ; throw }
 
-Install-eMAR
-if ($Global:Attempted) { Set-Dir -Path $Path -Remove }
+Install-eMAR ; Set-Dir -Path $Path -Remove
 
 #endregion -----------------------------------------------------------------------------------------------------------------
