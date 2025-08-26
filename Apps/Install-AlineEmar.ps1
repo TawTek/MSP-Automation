@@ -70,9 +70,9 @@ Optional switch to preserve installation log files by copying to SystemDrive\Log
 #region PARAM_VAR ----------------------------------------------------------------------------------------------------------
 
 param (
-    [string]$Path    = "C:\Temp\eMAR",
-    [string]$PathZip = "$Path\Aline_eMAR_6.12.11.zip",
-    [string]$URL     = "https://transfer.hostmyit.com/ninja/EL/Aline_eMAR_v6.12.11.zip",
+    [string]$Path    = "",
+    [string]$PathZip = "",
+    [string]$URL     = "",
     [switch]$KeepLog
 )
 
