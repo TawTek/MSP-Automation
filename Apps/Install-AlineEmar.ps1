@@ -142,7 +142,7 @@ $Apps = @(
 
 #endregion -----------------------------------------------------------------------------------------------------------------
 
-#region FUNCTIONS ------------------------------------------------------------------------------------------------
+#region FUNCTIONS ----------------------------------------------------------------------------------------------------------
 
 function Get-File {
 
@@ -217,7 +217,7 @@ function Install-App {
     #region LOGIC -----------------------------------------------------------------------------------------------------------
     <#
     [SUMMARY]
-    Installs an application from a specified installer (MSI or EXE), validates required arguments, 
+    Installs an application from a specified installer (MSI or EXE), validates required arguments,
     and logs the installation process.
 
     [PARAMETERS]
