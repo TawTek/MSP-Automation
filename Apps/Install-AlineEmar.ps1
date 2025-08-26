@@ -15,7 +15,7 @@
 
     2. REGISTRY CONFIGURATION:
        - Imports essential registry settings (accuflo6x.reg) required for eMAR environment
-       
+
     3. COMPONENT INSTALLATION SEQUENCE:
        The script installs components in this specific order to ensure dependencies are met:
        a) Microsoft ODBC Driver for SQL Server (prerequisite for database connectivity)
@@ -40,7 +40,7 @@
        - Individual log files for each application installation (Log_ApplicationName.log)
        - Exit code validation for all installation processes with specific error messages
        - Clear success/failure messaging with log file references for troubleshooting
-       - Optional log preservation: When -KeepLog switch is used, logs are copied to 
+       - Optional log preservation: When -KeepLog switch is used, logs are copied to
          SystemDrive\Logs directory before temporary directory cleanup
 
     6. CLEANUP OPERATIONS:
@@ -76,7 +76,7 @@ param (
     [switch]$KeepLog
 )
 
-$Apps = @( 
+$Apps = @(
     [PSCustomObject]@{
         Name = "ODBC Driver"
         Path = "$Path\msodbcsql_*.msi"
@@ -214,7 +214,7 @@ function Get-File {
 
 function Install-App {
 
-    #region LOGIC -----------------------------------------------------------------------------------------------------------
+    #region LOGIC ----------------------------------------------------------------------------------------------------------
     <#
     [SUMMARY]
     Installs an application from a specified installer (MSI or EXE), validates required arguments,
