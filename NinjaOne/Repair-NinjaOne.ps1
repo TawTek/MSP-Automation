@@ -38,23 +38,16 @@ function Remove-NinjaRMM {
     $ErrorActionPreference = 'SilentlyContinue'
     Write-Progress -Activity "Running Ninja Removal Script" -PercentComplete 0
 
-    #Set-PSDebug -Trace 2
-    if([system.environment]::Is64BitOperatingSystem){
-        $ninjaPreSoftKey = 'HKLM:\SOFTWARE\WOW6432Node\NinjaRMM LLC'
-        $uninstallKey = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
-        $exetomsiKey = 'HKLM:\SOFTWARE\WOW6432Node\EXEMSI.COM\MSI Wrapper\Installed'
-    } else {
-        $ninjaPreSoftKey = 'HKLM:\SOFTWARE\NinjaRMM LLC'
-        $uninstallKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-        $exetomsiKey = 'HKLM:\SOFTWARE\EXEMSI.COM\MSI Wrapper\Installed'
-    }
+    $RegKeyArch      = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
+    $RegKeySoftware  = Join-Path "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC" "NinjaRMMAgent"
+    $RegKeyUninstall = Join-Path "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall"
+    $RegKeyExeMsi    = Join-Path "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed"
 
-    $ninjaSoftKey = Join-Path $ninjaPreSoftKey -ChildPath 'NinjaRMMAgent'
     $ninjaDir = [string]::Empty
     $ninjaDataDir = Join-Path -Path $env:ProgramData -ChildPath "NinjaRMMAgent"
 
     #Locate Ninja
-    $ninjaDirRegLocation = $(Get-ItemPropertyValue $ninjaSoftKey -Name Location) 
+    $ninjaDirRegLocation = $(Get-ItemPropertyValue $RegKeySoftware -Name Location) 
     if($ninjaDirRegLocation){
         if(Join-Path -Path $ninjaDirRegLocation -ChildPath "NinjaRMMAgent.exe" | Test-Path){
             #location confirmed from registry location
@@ -129,8 +122,8 @@ function Remove-NinjaRMM {
         Remove-Item -Path  -Recurse -Force
 
         # Will search registry locations for NinjaRMMAgent value and delete parent key
-        # Search $uninstallKey
-        $keys = Get-ChildItem $uninstallKey | Get-ItemProperty -name 'DisplayName'
+        # Search $RegKeyUninstall
+        $keys = Get-ChildItem $RegKeyUninstall | Get-ItemProperty -name 'DisplayName'
         foreach ($key in $keys) {
             if ($key.'DisplayName' -eq 'NinjaRMMAgent'){
                 Remove-Item $key.PSPath -Recurse -Force
@@ -156,7 +149,7 @@ function Remove-NinjaRMM {
         }
 
         #Computer\HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\EXEMSI.COM\MSI Wrapper\Installed\NinjaRMMAgent 5.3.3681
-        Get-ChildItem $exetomsiKey | Where-Object -Property Name -CLike '*NinjaRMMAgent*'  | Remove-Item -Recurse -Force
+        Get-ChildItem $RegKeyExeMsi | Where-Object -Property Name -CLike '*NinjaRMMAgent*'  | Remove-Item -Recurse -Force
 
         #HKLM:\SOFTWARE\WOW6432Node\NinjaRMM LLC
         Get-Item -Path $ninjaPreSoftKey | Remove-Item -Recurse -Force
