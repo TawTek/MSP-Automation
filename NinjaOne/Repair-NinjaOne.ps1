@@ -35,49 +35,46 @@ $Cleanup = $true
 ###################################################################################################
 
 function Remove-NinjaRMM {
-    $ErrorActionPreference = 'SilentlyContinue'
     Write-Progress -Activity "Running Ninja Removal Script" -PercentComplete 0
 
+    # Define registry key paths based on system architecture
     $RegKeyArch      = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
     $RegKeySoftware  = Join-Path "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC" "NinjaRMMAgent"
     $RegKeyUninstall = Join-Path "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall"
     $RegKeyExeMsi    = Join-Path "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed"
 
-    $ninjaDir = [string]::Empty
-    $ninjaDataDir = Join-Path -Path $env:ProgramData -ChildPath "NinjaRMMAgent"
+    $DirNinjaData = Join-Path -Path $env:ProgramData -ChildPath "NinjaRMMAgent"
 
-    #Locate Ninja
-    $ninjaDirRegLocation = $(Get-ItemPropertyValue $RegKeySoftware -Name Location) 
-    if($ninjaDirRegLocation){
-        if(Join-Path -Path $ninjaDirRegLocation -ChildPath "NinjaRMMAgent.exe" | Test-Path){
-            #location confirmed from registry location
-            $ninjaDir = $ninjaDirRegLocation
-        }
+    # Attempt to locate Ninja directory via registry
+    try {
+        $DirNinja = Get-ItemPropertyValue -Path $RegKeySoftware -Name Location -EA Stop | Where-Object { Test-Path (Join-Path $_ "NinjaRMMAgent.exe") }
+    } catch {
+        $DirNinja = $null
     }
 
-    Write-Progress -Activity "Running Ninja Removal Script" -PercentComplete 10
-
-    if(!$ninjaDir){
-        #attempt to get the path from service
-        $ss = Get-WmiObject win32_service -Filter 'Name Like "NinjaRMMAgent"'
-        if($ss){
-            $ninjaDirService = ($(Get-WmiObject win32_service -Filter 'Name Like "NinjaRMMAgent"').PathName | Split-Path).Replace("`"", "")
-            if(Join-Path -Path $ninjaDirService -ChildPath "NinjaRMMAgentPatcher.exe" | Test-Path){
-                #location confirmed from service location
-                $ninjaDir = $ninjaDirService
+    # Attempt to locate Ninja directory via service path if registry check fails
+    if (-not $DirNinja) {
+        $ServiceNinja = Get-CimInstance -ClassName Win32_Service -Filter 'Name LIKE "NinjaRMMAgent"' | Select-Object -First 1
+        if ($ServiceNinja) {
+            $ServicePath = ($ServiceNinja.PathName | Split-Path).Replace('"','')
+            if (Test-Path (Join-Path $ServicePath "NinjaRMMAgentPatcher.exe")) {
+                $DirNinja = $ServicePath
             }
         }
     }
-    if($ninjaDir){
-        $ninjaDir.Replace('/','\')
-    }
+
+    # Normalize path slashes
+    if ($DirNinja) { $DirNinja = $DirNinja.Replace('/', '\') }
+
+    Write-Progress -Activity "Running Ninja Removal Script" -PercentComplete 10
+    
     if($Uninstall){
         Write-Progress -Activity "Running Ninja Removal Script" -Status "Running Uninstall" -PercentComplete 25
         #there are few measures agent takes to prevent accidental uninstllation
         #disable those measures now
         #it automatically takes care if those measures are already removed
         #it is not possible to check those measures outside of the agent since agent's development comes parralel to this script
-        Start "$ninjaDir\NinjaRMMAgent.exe" -disableUninstallPrevention NOUI
+        Start "$DirNinja\NinjaRMMAgent.exe" -disableUninstallPrevention NOUI
         # Executes uninstall.exe in Ninja install directory
         $Arguments = @(
             "/uninstall"
@@ -111,11 +108,11 @@ function Remove-NinjaRMM {
             & sc.exe DELETE nmsmanager
         }
         # Delete Ninja install directory and all contents
-        if(Test-Path $ninjaDir){
-            & cmd.exe /c rd /s /q $ninjaDir
+        if(Test-Path $DirNinja){
+            & cmd.exe /c rd /s /q $DirNinja
         }
-        if(Test-Path $ninjaDataDir){
-            & cmd.exe /c rd /s /q $ninjaDataDir
+        if(Test-Path $DirNinjaData){
+            & cmd.exe /c rd /s /q $DirNinjaData
         }
 
         #Computer\HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\NinjaRMM LLC\NinjaRMMAgent
@@ -167,13 +164,13 @@ function Remove-NinjaRMM {
     if(Get-Service "NinjaRMMAgent"){
         echo "Failed to remove NinjaRMMAgent service"
     }
-    if($ninjaDir){
-        if(Test-Path $ninjaDir){
+    if($DirNinja){
+        if(Test-Path $DirNinja){
             echo "Failed to remove NinjaRMMAgent program folder"
-            if(Join-Path -Path $ninjaDir -ChildPath "NinjaRMMAgent.exe" | Test-Path){
+            if(Join-Path -Path $DirNinja -ChildPath "NinjaRMMAgent.exe" | Test-Path){
                 echo "Failed to remove NinjaRMMAgent.exe"
             }
-            if(Join-Path -Path $ninjaDir -ChildPath "NinjaRMMAgentPatcher.exe" | Test-Path){
+            if(Join-Path -Path $DirNinja -ChildPath "NinjaRMMAgentPatcher.exe" | Test-Path){
                 echo "Failed to remove NinjaRMMAgentPatcher.exe"
             }
         }
@@ -201,7 +198,7 @@ $Arg = "/qn /norestart"
 ###---Checks if service exists---###
 function Confirm-Service {
     Write-Verbose "Checking if $ServiceName_NinjaOne exists."
-    if (Get-Service $ServiceName_NinjaOne -ErrorAction SilentlyContinue) {
+    if (Get-Service $ServiceName_NinjaOne -EA SilentlyContinue) {
         Write-Verbose "$ServiceName_NinjaOne exists, $App is already installed. Terminating script."
         exit
     } else {
@@ -240,10 +237,10 @@ function Get-NinjaOne {
     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Internet Explorer\Main" -Name "DisableFirstRunCustomize" -Value 2
     if($PowerShellVersion -lt "3.0") {
         Import-Module BitsTransfer
-        Start-BitsTransfer -Source $DownloadApp -Destination $TempFilePath -ErrorAction Stop
+        Start-BitsTransfer -Source $DownloadApp -Destination $TempFilePath -EA Stop
     } else {
         [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
-        Invoke-WebRequest -Uri $DownloadApp -UseBasicParsing -OutFile $TempFilePath -ErrorAction Stop
+        Invoke-WebRequest -Uri $DownloadApp -UseBasicParsing -OutFile $TempFilePath -EA Stop
     }
     Write-Verbose "$App has finished downloading."
     Write-Verbose "Installing $App."
@@ -252,7 +249,7 @@ function Get-NinjaOne {
 ###---Checks if service exists after attempted install---###
 function Confirm-AppInstall {
     Start-Process -FilePath $TempFilePath -ArgumentList $Arg -wait
-    if (Get-Service $ServiceName_NinjaOne -ErrorAction SilentlyContinue) {
+    if (Get-Service $ServiceName_NinjaOne -EA SilentlyContinue) {
         Write-Verbose "$ServiceName_NinjaOne exists, $App has been installed."
         Write-Verbose "Deleting temporary directory folder."
         Remove-Item $TempDirectory -recurse -force
