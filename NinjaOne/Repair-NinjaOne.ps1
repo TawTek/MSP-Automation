@@ -54,7 +54,7 @@ function Remove-NinjaRMM {
         if ($GUID) {
             Start-Process -FilePath (Join-Path $DirNinja "NinjaRMMAgent.exe") -ArgumentList "-disableUninstallPrevention NOUI" -WindowStyle Hidden -Wait
             $LogPath = "$env:windir\temp\NinjaRMMAgent_uninstall.log"
-            $Arguments = "/x $GUID /L*v `"$LogPath`" WRAPPED_ARGUMENTS=`"--mode unattended`""
+            $Arguments = "/x $GUID /quiet /L*v `"$LogPath`" WRAPPED_ARGUMENTS=`"--mode unattended`""
             Start-Process -FilePath "msiexec.exe" -ArgumentList $Arguments -Wait
         } else {
             Write-Warning "NinjaRMMAgent product not found in MSI database."
@@ -147,16 +147,15 @@ $VerbosePreference = "Continue"
 $TempDirectory = "C:\Temp\NinjaOne"
 $PowerShellVersion = $PSVersionTable.PSVersion
 $App = "NinjaOne"
-$DownloadApp = "URL-TO-FILE/$ClientCode-ninjaone.msi"
-$TempFileName = "$ClientCode-ninjaone.msi"
+$DownloadApp = "https://app.ninjarmm.com/ws/api/v2/generic-installer/NinjaOneAgent-x86.msi"
+$TempFileName = "NinjaOneAgent-x86.msi"
 $TempFilePath = Join-Path -Path $TempDirectory -ChildPath $TempFileName
 $ServiceName_NinjaOne = “NinjaRMMAgent”
-$Arg = "/qn /norestart"
 
-###---Checks if service exists---###
+###---Checks if Bitdefender or S1 service exists---###
 function Confirm-Service {
     Write-Verbose "Checking if $ServiceName_NinjaOne exists."
-    if (Get-Service $ServiceName_NinjaOne -EA SilentlyContinue) {
+    if (Get-Service $ServiceName_NinjaOne -ErrorAction SilentlyContinue) {
         Write-Verbose "$ServiceName_NinjaOne exists, $App is already installed. Terminating script."
         exit
     } else {
@@ -182,32 +181,32 @@ function Confirm-Installer {
     if (Test-Path -LiteralPath $TempFilePath) {
         Write-Verbose "$App installer exists, skipping download"
         Write-Verbose "Installing $App."
-        Start-Process -FilePath $TempFilePath -ArgumentList $Arg -wait
+    Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$TempFilePath`" TOKENID=$TOKENID /qn /norestart" -Wait -NoNewWindow
+
     } else {
         Write-Verbose "$App installer does not exist, continuing to download installer."
         Get-NinjaOne
     }
 }
 
-###---Downloads and Installs--###
+###---Downloads and Installs BDGZ---###
 function Get-NinjaOne {
     Write-Verbose "Downloading $App installer to $TempDirectory."
     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Internet Explorer\Main" -Name "DisableFirstRunCustomize" -Value 2
     if($PowerShellVersion -lt "3.0") {
         Import-Module BitsTransfer
-        Start-BitsTransfer -Source $DownloadApp -Destination $TempFilePath -EA Stop
+        Start-BitsTransfer -Source $DownloadApp -Destination $TempFilePath -ErrorAction Stop
     } else {
         [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
-        Invoke-WebRequest -Uri $DownloadApp -UseBasicParsing -OutFile $TempFilePath -EA Stop
+        Invoke-WebRequest -Uri $DownloadApp -UseBasicParsing -OutFile $TempFilePath -ErrorAction Stop
     }
     Write-Verbose "$App has finished downloading."
     Write-Verbose "Installing $App."
 }
 
-###---Checks if service exists after attempted install---###
+###---Checks if Bitdefender service exists after attempted install---###
 function Confirm-AppInstall {
-    Start-Process -FilePath $TempFilePath -ArgumentList $Arg -wait
-    if (Get-Service $ServiceName_NinjaOne -EA SilentlyContinue) {
+    if (Get-Service $ServiceName_NinjaOne -ErrorAction SilentlyContinue) {
         Write-Verbose "$ServiceName_NinjaOne exists, $App has been installed."
         Write-Verbose "Deleting temporary directory folder."
         Remove-Item $TempDirectory -recurse -force
@@ -236,7 +235,6 @@ function Test-PendingReboot {
     catch { }
     return $false
 }
-
 Confirm-TempPath
 Get-NinjaOne
 Remove-NinjaRMM
