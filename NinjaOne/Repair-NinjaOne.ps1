@@ -51,7 +51,7 @@ function Remove-NinjaRMM {
                 Select-Object -ExpandProperty UninstallString |
                 ForEach-Object { [regex]::Match($_, "\{[A-F0-9\-]+\}").Value }
 
-        if (%GUID) {
+        if ($GUID) {
             Start-Process -FilePath (Join-Path $DirNinja "NinjaRMMAgent.exe") -ArgumentList "-disableUninstallPrevention NOUI" -WindowStyle Hidden -Wait
             $LogPath = "$env:windir\temp\NinjaRMMAgent_uninstall.log"
             $Arguments = "/x $GUID /L*v `"$LogPath`" WRAPPED_ARGUMENTS=`"--mode unattended`""
