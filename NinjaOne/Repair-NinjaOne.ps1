@@ -39,9 +39,9 @@ function Remove-NinjaRMM {
 
     # Define registry key paths based on system architecture
     $RegKeyArch      = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
-    $RegKeySoftware  = Join-Path "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC" "NinjaRMMAgent"
-    $RegKeyUninstall = Join-Path "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall"
-    $RegKeyExeMsi    = Join-Path "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed"
+    $RegKeySoftware  = "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC\NinjaRMMAgent"
+    $RegKeyUninstall = "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall"
+    $RegKeyExeMsi    = "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed"
 
     $DirNinjaData = Join-Path -Path $env:ProgramData -ChildPath "NinjaRMMAgent"
 
