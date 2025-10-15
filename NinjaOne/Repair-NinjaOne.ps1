@@ -69,25 +69,18 @@ function Remove-NinjaRMM {
     Write-Progress -Activity "Running Ninja Removal Script" -PercentComplete 10
     
     if ($Uninstall) {
-        # Disable uninstall prevention measures in the agent
-        # Get the MSI product code for NinjaRMMAgent
-
         Write-Progress -Activity "Running Ninja Removal Script" -Status "Running Uninstall" -PercentComplete 25
 
-        Start-Process -FilePath (Join-Path $DirNinja "NinjaRMMAgent.exe") -ArgumentList "-disableUninstallPrevention NOUI" -NoNewWindow -Wait
+        $GUID = Get-ItemProperty -Path "$RegKeyUninstall\*" -EA SilentlyContinue |
+                Where-Object { $_.DisplayName -eq 'NinjaRMMAgent' -and $_.UninstallString -match 'msiexec' } |
+                Select-Object -ExpandProperty UninstallString |
+                ForEach-Object { [regex]::Match($_, "\{[A-F0-9\-]+\}").Value }
 
-        $Arguments = @(
-            "/uninstall"
-            (Get-CimInstance -ClassName Win32_Product -Filter "Name='NinjaRMMAgent'" | Select-Object -First 1).IdentifyingNumber
-            "/quiet"
-            "/log"
-            "NinjaRMMAgent_uninstall.log"
-            "/L*v"
-            'WRAPPED_ARGUMENTS="--mode unattended"'
-            )
-
-        Start-Process -FilePath "msiexec.exe" -ArgumentList $Arguments -Verb RunAs -Wait -NoNewWindow -WhatIf
-
+        if (%GUID) {
+            Start-Process -FilePath (Join-Path $DirNinja "NinjaRMMAgent.exe") -ArgumentList "-disableUninstallPrevention NOUI" -WindowStyle Hidden -Wait
+            $LogPath = "$env:windir\temp\NinjaRMMAgent_uninstall.log"
+            $Arguments = "/x $GUID /L*v `"$LogPath`" WRAPPED_ARGUMENTS=`"--mode unattended`""
+            Start-Process -FilePath "msiexec.exe" -ArgumentList $Arguments -Wait
         } else {
             Write-Warning "NinjaRMMAgent product not found in MSI database."
         }
