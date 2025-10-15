@@ -68,26 +68,32 @@ function Remove-NinjaRMM {
 
     Write-Progress -Activity "Running Ninja Removal Script" -PercentComplete 10
     
-    if($Uninstall){
+    if ($Uninstall) {
+        # Disable uninstall prevention measures in the agent
+        # Get the MSI product code for NinjaRMMAgent
+
         Write-Progress -Activity "Running Ninja Removal Script" -Status "Running Uninstall" -PercentComplete 25
-        #there are few measures agent takes to prevent accidental uninstllation
-        #disable those measures now
-        #it automatically takes care if those measures are already removed
-        #it is not possible to check those measures outside of the agent since agent's development comes parralel to this script
-        Start "$DirNinja\NinjaRMMAgent.exe" -disableUninstallPrevention NOUI
-        # Executes uninstall.exe in Ninja install directory
+
+        Start-Process -FilePath (Join-Path $DirNinja "NinjaRMMAgent.exe") -ArgumentList "-disableUninstallPrevention NOUI" -NoNewWindow -Wait
+
         $Arguments = @(
             "/uninstall"
-            $(Get-WmiObject -Class win32_product -Filter "Name='NinjaRMMAgent'").IdentifyingNumber
+            (Get-CimInstance -ClassName Win32_Product -Filter "Name='NinjaRMMAgent'" | Select-Object -First 1).IdentifyingNumber
             "/quiet"
             "/log"
             "NinjaRMMAgent_uninstall.log"
             "/L*v"
-            "WRAPPED_ARGUMENTS=`"--mode unattended`""
-        )
-        Start-Process -FilePath "msiexec.exe"  -Verb RunAs -Wait -NoNewWindow -WhatIf -ArgumentList $Arguments
+            'WRAPPED_ARGUMENTS="--mode unattended"'
+            )
+
+        Start-Process -FilePath "msiexec.exe" -ArgumentList $Arguments -Verb RunAs -Wait -NoNewWindow -WhatIf
+
+        } else {
+            Write-Warning "NinjaRMMAgent product not found in MSI database."
+        }
+
         Write-Progress -Activity "Running Ninja Removal Script" -Status "Uninstall Completed" -PercentComplete 40
-        sleep 1
+        Start-Sleep -Seconds 1
     }
 
     if($Cleanup){
