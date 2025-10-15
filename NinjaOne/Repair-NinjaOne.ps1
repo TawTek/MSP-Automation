@@ -16,6 +16,7 @@ function Remove-NinjaRMM {
     $RegKeyArch      = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
     $RegKeySoftware  = "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC\NinjaRMMAgent"
     $RegKeyUninstall = "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall"
+    $RegKeySystem    = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products"
     $RegKeyExeMsi    = "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed"
 
     $DirNinjaData = Join-Path -Path $env:ProgramData -ChildPath "NinjaRMMAgent"
@@ -46,10 +47,24 @@ function Remove-NinjaRMM {
     if ($Uninstall) {
         Write-Progress -Activity "Running Ninja Removal Script" -Status "Running Uninstall" -PercentComplete 25
 
-        $GUID = Get-ItemProperty -Path "$RegKeyUninstall\*" -EA SilentlyContinue |
-                Where-Object { $_.DisplayName -eq 'NinjaRMMAgent' -and $_.UninstallString -match 'msiexec' } |
-                Select-Object -ExpandProperty UninstallString |
-                ForEach-Object { [regex]::Match($_, "\{[A-F0-9\-]+\}").Value }
+
+        # Try to get the uninstall string from standard uninstall registry path
+        $UninstallString = Get-ItemProperty -Path "$RegKeyUninstall\*" -EA SilentlyContinue |
+                           Where-Object { $_.DisplayName -eq 'NinjaRMMAgent' -and $_.UninstallString -match 'msiexec' } |
+                           Select-Object -ExpandProperty UninstallString -EA SilentlyContinue |
+                           Select-Object -First 1
+
+        # If not found, try the system installer registry path
+        if (-not $UninstallString) {
+            $UninstallString = Get-ChildItem -Path $RegKeySystem -EA SilentlyContinue |
+                ForEach-Object {
+                    $InstallPropsPath = Join-Path $_.PSPath "InstallProperties"
+                    $Props = Get-ItemProperty -Path $InstallPropsPath -EA SilentlyContinue
+                    if ($Props.DisplayName -eq 'NinjaRMMAgent') { $Props.UninstallString } } | Select-Object -First 1
+        }
+
+        # Extract the GUID from the uninstall string
+        $GUID = if ($UninstallString) { [regex]::Match($UninstallString, "\{[A-F0-9\-]+\}").Value }
 
         if ($GUID) {
             Start-Process -FilePath (Join-Path $DirNinja "NinjaRMMAgent.exe") -ArgumentList "-disableUninstallPrevention NOUI" -WindowStyle Hidden -Wait
@@ -155,7 +170,7 @@ $ServiceName_NinjaOne = “NinjaRMMAgent”
 ###---Checks if Bitdefender or S1 service exists---###
 function Confirm-Service {
     Write-Verbose "Checking if $ServiceName_NinjaOne exists."
-    if (Get-Service $ServiceName_NinjaOne -ErrorAction SilentlyContinue) {
+    if (Get-Service $ServiceName_NinjaOne -EA SilentlyContinue) {
         Write-Verbose "$ServiceName_NinjaOne exists, $App is already installed. Terminating script."
         exit
     } else {
@@ -195,10 +210,10 @@ function Get-NinjaOne {
     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Internet Explorer\Main" -Name "DisableFirstRunCustomize" -Value 2
     if($PowerShellVersion -lt "3.0") {
         Import-Module BitsTransfer
-        Start-BitsTransfer -Source $DownloadApp -Destination $TempFilePath -ErrorAction Stop
+        Start-BitsTransfer -Source $DownloadApp -Destination $TempFilePath -EA Stop
     } else {
         [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
-        Invoke-WebRequest -Uri $DownloadApp -UseBasicParsing -OutFile $TempFilePath -ErrorAction Stop
+        Invoke-WebRequest -Uri $DownloadApp -UseBasicParsing -OutFile $TempFilePath -EA Stop
     }
     Write-Verbose "$App has finished downloading."
     Write-Verbose "Installing $App."
@@ -206,7 +221,7 @@ function Get-NinjaOne {
 
 ###---Checks if Bitdefender service exists after attempted install---###
 function Confirm-AppInstall {
-    if (Get-Service $ServiceName_NinjaOne -ErrorAction SilentlyContinue) {
+    if (Get-Service $ServiceName_NinjaOne -EA SilentlyContinue) {
         Write-Verbose "$ServiceName_NinjaOne exists, $App has been installed."
         Write-Verbose "Deleting temporary directory folder."
         Remove-Item $TempDirectory -recurse -force
