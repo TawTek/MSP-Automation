@@ -94,7 +94,6 @@ function Remove-NinjaRMM {
 
         Write-Progress -Activity "Running Ninja Removal Script" -Status "Uninstall Completed" -PercentComplete 40
         Start-Sleep -Seconds 1
-    }
 
     if($Cleanup){
         Write-Progress -Activity "Running Ninja Removal Script" -Status "Running Cleanup" -PercentComplete 50
