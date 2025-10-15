@@ -95,95 +95,79 @@ function Remove-NinjaRMM {
         Write-Progress -Activity "Running Ninja Removal Script" -Status "Uninstall Completed" -PercentComplete 40
         Start-Sleep -Seconds 1
 
-    if($Cleanup){
+    if ($Cleanup) {
         Write-Progress -Activity "Running Ninja Removal Script" -Status "Running Cleanup" -PercentComplete 50
-        $service=Get-Service "NinjaRMMAgent"
-        if($service){
-            Stop-Service $service -Force
-            & sc.exe DELETE NinjaRMMAgent
-            #Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\NinjaRMMAgent
-        }
-        $proxyservice=Get-Process "NinjaRMMProxyProcess64"
-        if($proxyservice){
-            Stop-Process $proxyservice -Force
-        }
-        $nmsservice=Get-Service "nmsmanager"
-        if($nmsservice){
-            Stop-Service $nmsservice -Force
-            & sc.exe DELETE nmsmanager
-        }
-        # Delete Ninja install directory and all contents
-        if(Test-Path $DirNinja){
-            & cmd.exe /c rd /s /q $DirNinja
-        }
-        if(Test-Path $DirNinjaData){
-            & cmd.exe /c rd /s /q $DirNinjaData
+
+        # Stop and remove services
+        $servicesToRemove = @("NinjaRMMAgent", "nmsmanager")
+        foreach ($ServiceName in $servicesToRemove) {
+            $Service = Get-Service -Name $ServiceName -EA SilentlyContinue
+            if ($Service) {
+                Stop-Service -InputObject $Service -Force
+                sc.exe DELETE $ServiceName
+            }
         }
 
-        #Computer\HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\NinjaRMM LLC\NinjaRMMAgent
-        Remove-Item -Path  -Recurse -Force
+        # Stop Ninja Proxy Process
+        $ProxyProcess = Get-Process -Name "NinjaRMMProxyProcess64" -EA SilentlyContinue
+        if ($ProxyProcess) { Stop-Process -InputObject $ProxyProcess -Force }
 
-        # Will search registry locations for NinjaRMMAgent value and delete parent key
-        # Search $RegKeyUninstall
-        $keys = Get-ChildItem $RegKeyUninstall | Get-ItemProperty -name 'DisplayName'
-        foreach ($key in $keys) {
-            if ($key.'DisplayName' -eq 'NinjaRMMAgent'){
-                Remove-Item $key.PSPath -Recurse -Force
+        # Remove installation directories
+        $DirsToRemove = @($DirNinja, $DirNinjaData)
+        foreach ($Dir in $DirsToRemove) {
+            if (Test-Path $Dir) {
+                Remove-Item -Path $Dir -Recurse -Force -EA SilentlyContinue
+            }
+        }
+
+        # Remove registry keys
+        $RegistryKeys = @(
+            $RegKeyUninstall,
+            'HKLM:\SOFTWARE\Classes\Installer\Products',
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products',
+            $RegKeyExeMsi,
+            (Split-Path $RegKeySoftware),
+            "HKLM:\SOFTWARE\WOW6432Node\WOW6432Node\NinjaRMM LLC"
+            )
+        
+        foreach ($KeyPath in $RegistryKeys) {
+            if (Test-Path $KeyPath) {
+                # Remove matching child keys when applicable
+                Get-ChildItem -Path $KeyPath -EA SilentlyContinue | ForEach-Object {
+                    $KeyProps = Get-ItemProperty -Path $_.PSPath -EA SilentlyContinue
+                    if ($KeyProps.PSObject.Properties.Name -contains 'DisplayName') {
+                        if ($KeyProps.DisplayName -eq 'NinjaRMMAgent') { Remove-Item -LiteralPath $_.PSPath -Recurse -Force }
+                    } elseif ($KeyProps.PSObject.Properties.Name -contains 'ProductName') {
+                        if ($KeyProps.ProductName -eq 'NinjaRMMAgent') { Remove-Item -LiteralPath $_.PSPath -Recurse -Force }
+                    } else {
+                        Remove-Item -LiteralPath $_.PSPath -Recurse -Force
+                    }
                 }
             }
-
-        #Search $installerKey
-        $keys = Get-ChildItem 'HKLM:\SOFTWARE\Classes\Installer\Products' | Get-ItemProperty -name 'ProductName'
-        foreach ($key in $keys) {
-            if ($key.'ProductName' -eq 'NinjaRMMAgent'){
-                Remove-Item $key.PSPath -Recurse -Force
-            }
-        }
-        # Computer\HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\A0313090625DD2B4F824C1EAE0958B08\InstallProperties
-        $keys = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products'
-        foreach ($key in $keys) {
-            $kn = $key.Name -replace 'HKEY_LOCAL_MACHINE' , 'HKLM:'; 
-            $k1 = Join-Path $kn -ChildPath 'InstallProperties';
-            if( $(Get-ItemProperty -Path $k1 -Name DisplayName).DisplayName -eq 'NinjaRMMAgent'){
-                $toremove = 
-                Get-Item -LiteralPath $kn | Remove-Item -Recurse -Force
-            }
         }
 
-        #Computer\HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\EXEMSI.COM\MSI Wrapper\Installed\NinjaRMMAgent 5.3.3681
-        Get-ChildItem $RegKeyExeMsi | Where-Object -Property Name -CLike '*NinjaRMMAgent*'  | Remove-Item -Recurse -Force
-
-        #HKLM:\SOFTWARE\WOW6432Node\NinjaRMM LLC
-        Get-Item -Path $ninjaPreSoftKey | Remove-Item -Recurse -Force
-
-        # agent creates this key by mistake but we delete it here
-        Get-Item -Path "HKLM:\SOFTWARE\WOW6432Node\WOW6432Node\NinjaRMM LLC" | Remove-Item -Recurse -Force
-        
         Write-Progress -Activity "Running Ninja Removal Script" -Status "Cleanup Completed" -PercentComplete 75
-        sleep 1
+        Start-Sleep -Seconds 1
     }
 
-    if(Get-Item -Path $ninjaPreSoftKey){
-        echo "Failed to remove NinjaRMMAgent reg keys ", $ninjaPreSoftKey
+    # Verify removal
+    $FailedChecks = @()
+
+    if (Test-Path (Split-Path $RegKeySoftware)) { $FailedChecks += "Failed to remove NinjaRMMAgent registry keys: $((Split-Path $RegKeySoftware))" }
+    if (Get-Service -Name "NinjaRMMAgent" -EA SilentlyContinue) { $FailedChecks += "Failed to remove NinjaRMMAgent service" }
+    if ($DirNinja -and (Test-Path $DirNinja)) {
+        $FailedChecks += "Failed to remove NinjaRMMAgent program folder: $DirNinja"
+        if (Test-Path (Join-Path $DirNinja "NinjaRMMAgent.exe")) { $FailedChecks += "Failed to remove NinjaRMMAgent.exe" }
+        if (Test-Path (Join-Path $DirNinja "NinjaRMMAgentPatcher.exe")) { $FailedChecks += "Failed to remove NinjaRMMAgentPatcher.exe" }
     }
-    if(Get-Service "NinjaRMMAgent"){
-        echo "Failed to remove NinjaRMMAgent service"
-    }
-    if($DirNinja){
-        if(Test-Path $DirNinja){
-            echo "Failed to remove NinjaRMMAgent program folder"
-            if(Join-Path -Path $DirNinja -ChildPath "NinjaRMMAgent.exe" | Test-Path){
-                echo "Failed to remove NinjaRMMAgent.exe"
-            }
-            if(Join-Path -Path $DirNinja -ChildPath "NinjaRMMAgentPatcher.exe" | Test-Path){
-                echo "Failed to remove NinjaRMMAgentPatcher.exe"
-            }
-        }
-    }
+
+    foreach ($Check in $FailedChecks) { Write-Host $Check -ForegroundColor Red }
 
     Write-Progress -Activity "Running Ninja Removal Script" -Status "Completed" -PercentComplete 100
-    sleep 1
-    $error | out-file C:\Windows\Temp\NinjaRemovalScriptError.txt
+    Start-Sleep -Seconds 1
+
+    # Export any errors to a file
+    $error | Out-File -FilePath "C:\Windows\Temp\NinjaRemovalScriptError.txt"
 }
 
 ###################################################################################################
