@@ -1,34 +1,9 @@
 param (
-    [string]$ClientCode
+    [string]$TokenID = $(Ninja-Property-Get ninjaTokenId)
 )
-$Info = {
-**********************************************************************************************************
-*  Synopsis: Reinstall NinjaOne
-*  Description:
 
-    > Uses parameter to pass $ClientCode
-    > Runs Ninjas own script for complete removal
-    > Afterwards starts process to reinstall
-    > Checks for temporary directory and if missing, creates one in C:\Temp
-    > Checks if installer exists, skips if it does
-    > Adds regkey to disable IE first run setup (prevents downloads if it was never run before)
-    > Checks PowerShell version and executes correct cmdlet for downloading app installer
-    > Downloads app installer
-    > Runs msi installer with arguments defined
-    > Checks if service exists after attempted install
-    > Deletes temporary folder after verification that installation is complete
-
-*  Created: 23-06-16 | TawTek
-*  Updated: 23-08-29 | TawTek
-*  Version: 2.0
-
-*  CHANGELOG:
-
-    > 23-06-16  First iteration of script developed
-**********************************************************************************************************
-}
+$Cleanup   = $true
 $Uninstall = $true
-$Cleanup = $true
 
 ###################################################################################################
 # Remove NinjaOne #
