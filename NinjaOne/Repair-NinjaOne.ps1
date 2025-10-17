@@ -22,35 +22,33 @@ $ServiceName_NinjaOne = “NinjaRMMAgent”
 
 #region Uninstall Variables -------------------------------
 
-# Define registry key paths based on system architecture
+# Define regkey paths based on system architecture
 $RegKeyArch      = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
 $RegKeySoftware  = "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC\NinjaRMMAgent"
 $RegKeyUninstall = "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall"
 $RegKeySystem    = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products"
 $RegKeyExeMsi    = "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed"
 
+# Define Ninja installation directory
 $DirNinjaData = Join-Path -Path $env:ProgramData -ChildPath "NinjaRMMAgent"
 
-# Attempt to locate Ninja directory via registry
-try {
-    $DirNinja = Get-ItemPropertyValue -Path $RegKeySoftware -Name Location -EA Stop | Where-Object { Test-Path (Join-Path $_ "NinjaRMMAgent.exe") }
-} catch {
-    $DirNinja = $null
-}
-
-# Attempt to locate Ninja directory via service path if registry check fails
-if (-not $DirNinja) {
-    $ServiceNinja = Get-CimInstance -ClassName Win32_Service -Filter 'Name LIKE "NinjaRMMAgent"' | Select-Object -First 1
-    if ($ServiceNinja) {
-        $ServicePath = ($ServiceNinja.PathName | Split-Path).Replace('"','')
-        if (Test-Path (Join-Path $ServicePath "NinjaRMMAgentPatcher.exe")) {
-            $DirNinja = $ServicePath
+# Get Ninja directory via registry or fallback to service path
+$DirNinja = & {
+    # [Primary] Registry path lookup
+    if ($DirNinjaReg = Get-ItemPropertyValue -Path $RegKeySoftware -Name Location | 
+                       Where-Object { Test-Path (Join-Path $_ "NinjaRMMAgent.exe") }) {
+        return $DirNinjaReg.Replace('/', '\')
+    }
+    # [Fallback] Service path lookup
+    $DirNinjaService = Get-CimInstance -ClassName Win32_Service -Filter 'Name LIKE "NinjaRMMAgent"' |
+                       Select-Object -First 1      
+    if ($DirNinjaService -and $DirNinjaService.PathName) {
+        $DirNinjaServicePath = ($DirNinjaService.PathName | Split-Path).Replace('"', '')
+        if (Test-Path (Join-Path $DirNinjaServicePath "NinjaRMMAgent.exe")) {
+            return $DirNinjaServicePath.Replace('/', '\')
         }
     }
 }
-
-# Normalize path slashes
-if ($DirNinja) { $DirNinja = $DirNinja.Replace('/', '\') }
 
 #endregion ------------------------------------------------
 
