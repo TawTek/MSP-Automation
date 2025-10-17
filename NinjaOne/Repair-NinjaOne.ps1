@@ -7,40 +7,59 @@ param (
 $Cleanup   = $true
 $Uninstall = $true
 
+#region Install Variables --------------------------------
+
+$VerbosePreference = "Continue"
+$TempDirectory = "C:\Temp\NinjaOne"
+$PowerShellVersion = $PSVersionTable.PSVersion
+$App = "NinjaOne"
+$DownloadApp = "https://app.ninjarmm.com/ws/api/v2/generic-installer/NinjaOneAgent-x86.msi"
+$TempFileName = "NinjaOneAgent-x86.msi"
+$TempFilePath = Join-Path -Path $TempDirectory -ChildPath $TempFileName
+$ServiceName_NinjaOne = “NinjaRMMAgent”
+
+#endregion ------------------------------------------------
+
+#region Uninstall Variables -------------------------------
+
+# Define registry key paths based on system architecture
+$RegKeyArch      = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
+$RegKeySoftware  = "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC\NinjaRMMAgent"
+$RegKeyUninstall = "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall"
+$RegKeySystem    = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products"
+$RegKeyExeMsi    = "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed"
+
+$DirNinjaData = Join-Path -Path $env:ProgramData -ChildPath "NinjaRMMAgent"
+
+# Attempt to locate Ninja directory via registry
+try {
+    $DirNinja = Get-ItemPropertyValue -Path $RegKeySoftware -Name Location -EA Stop | Where-Object { Test-Path (Join-Path $_ "NinjaRMMAgent.exe") }
+} catch {
+    $DirNinja = $null
+}
+
+# Attempt to locate Ninja directory via service path if registry check fails
+if (-not $DirNinja) {
+    $ServiceNinja = Get-CimInstance -ClassName Win32_Service -Filter 'Name LIKE "NinjaRMMAgent"' | Select-Object -First 1
+    if ($ServiceNinja) {
+        $ServicePath = ($ServiceNinja.PathName | Split-Path).Replace('"','')
+        if (Test-Path (Join-Path $ServicePath "NinjaRMMAgentPatcher.exe")) {
+            $DirNinja = $ServicePath
+        }
+    }
+}
+
+# Normalize path slashes
+if ($DirNinja) { $DirNinja = $DirNinja.Replace('/', '\') }
+
+#endregion ------------------------------------------------
+
 #endregion ------------------------------------------------------------------------------------------------------------
 
 #region FUNCTIONS -----------------------------------------------------------------------------------------------------
 
 function Remove-NinjaRMM {
-    # Define registry key paths based on system architecture
-    $RegKeyArch      = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
-    $RegKeySoftware  = "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC\NinjaRMMAgent"
-    $RegKeyUninstall = "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall"
-    $RegKeySystem    = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products"
-    $RegKeyExeMsi    = "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed"
 
-    $DirNinjaData = Join-Path -Path $env:ProgramData -ChildPath "NinjaRMMAgent"
-
-    # Attempt to locate Ninja directory via registry
-    try {
-        $DirNinja = Get-ItemPropertyValue -Path $RegKeySoftware -Name Location -EA Stop | Where-Object { Test-Path (Join-Path $_ "NinjaRMMAgent.exe") }
-    } catch {
-        $DirNinja = $null
-    }
-
-    # Attempt to locate Ninja directory via service path if registry check fails
-    if (-not $DirNinja) {
-        $ServiceNinja = Get-CimInstance -ClassName Win32_Service -Filter 'Name LIKE "NinjaRMMAgent"' | Select-Object -First 1
-        if ($ServiceNinja) {
-            $ServicePath = ($ServiceNinja.PathName | Split-Path).Replace('"','')
-            if (Test-Path (Join-Path $ServicePath "NinjaRMMAgentPatcher.exe")) {
-                $DirNinja = $ServicePath
-            }
-        }
-    }
-
-    # Normalize path slashes
-    if ($DirNinja) { $DirNinja = $DirNinja.Replace('/', '\') }
     
     if ($Uninstall) {
 
@@ -139,15 +158,6 @@ function Remove-NinjaRMM {
 #endregion -----------------------------------------------------------------------------------------------------------------
 
 #region Install Functions --------------------------------------------------------------------------------------------------
-
-$VerbosePreference = "Continue"
-$TempDirectory = "C:\Temp\NinjaOne"
-$PowerShellVersion = $PSVersionTable.PSVersion
-$App = "NinjaOne"
-$DownloadApp = "https://app.ninjarmm.com/ws/api/v2/generic-installer/NinjaOneAgent-x86.msi"
-$TempFileName = "NinjaOneAgent-x86.msi"
-$TempFilePath = Join-Path -Path $TempDirectory -ChildPath $TempFileName
-$ServiceName_NinjaOne = “NinjaRMMAgent”
 
 ###---Checks if Bitdefender or S1 service exists---###
 function Confirm-Service {
