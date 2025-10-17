@@ -10,8 +10,6 @@ $Uninstall = $true
 ###################################################################################################
 
 function Remove-NinjaRMM {
-    Write-Progress -Activity "Running Ninja Removal Script" -PercentComplete 0
-
     # Define registry key paths based on system architecture
     $RegKeyArch      = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
     $RegKeySoftware  = "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC\NinjaRMMAgent"
@@ -41,11 +39,8 @@ function Remove-NinjaRMM {
 
     # Normalize path slashes
     if ($DirNinja) { $DirNinja = $DirNinja.Replace('/', '\') }
-
-    Write-Progress -Activity "Running Ninja Removal Script" -PercentComplete 10
     
     if ($Uninstall) {
-        Write-Progress -Activity "Running Ninja Removal Script" -Status "Running Uninstall" -PercentComplete 25
 
 
         # Try to get the uninstall string from standard uninstall registry path
@@ -74,14 +69,9 @@ function Remove-NinjaRMM {
         } else {
             Write-Warning "NinjaRMMAgent product not found in MSI database."
         }
-
-        Write-Progress -Activity "Running Ninja Removal Script" -Status "Uninstall Completed" -PercentComplete 40
-        Start-Sleep -Seconds 1
     }
 
     if ($Cleanup) {
-        Write-Progress -Activity "Running Ninja Removal Script" -Status "Running Cleanup" -PercentComplete 50
-
         # Stop and remove services
         $servicesToRemove = @("NinjaRMMAgent", "nmsmanager")
         foreach ($ServiceName in $servicesToRemove) {
@@ -129,9 +119,6 @@ function Remove-NinjaRMM {
                 }
             }
         }
-
-        Write-Progress -Activity "Running Ninja Removal Script" -Status "Cleanup Completed" -PercentComplete 75
-        Start-Sleep -Seconds 1
     }
 
     # Verify removal
@@ -146,12 +133,6 @@ function Remove-NinjaRMM {
     }
 
     foreach ($Check in $FailedChecks) { Write-Host $Check -ForegroundColor Red }
-
-    Write-Progress -Activity "Running Ninja Removal Script" -Status "Completed" -PercentComplete 100
-    Start-Sleep -Seconds 1
-
-    # Export any errors to a file
-    $error | Out-File -FilePath "C:\Windows\Temp\NinjaRemovalScriptError.txt"
 }
 
 ###################################################################################################
