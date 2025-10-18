@@ -1,96 +1,210 @@
-#region PARAM_VAR -----------------------------------------------------------------------------------------------------
+#region ═════════════════════════════════════════════ {VARIABLES} ═════════════════════════════════════════════════════
 
-param (
-    [string]$TokenID = $(Ninja-Property-Get ninjaTokenId)
+#region ────────────────────────────────────────────── [VAR.App] ──────────────────────────────────────────────────────
+
+$App = @(
+    [PSCustomObject]@{
+        Name       = "NinjaRMM"
+        Path       = $PathTempFile
+        MsiInstall = {
+            return @(
+                "/i"
+                "`"$PathTempFile`""
+                "TOKENID=$TokenID"
+                "/qn"
+                "/L*V"
+                "`"$(Join-Path $DirTemp "$Name-$Operation.log")`""
+            )
+        }
+        MsiUninstall = {
+            return @(
+                "/x"
+                if ($GUID) { $GUID } else { "`"$PathTempFile`"" }
+                "/qn"
+                "/norestart" 
+                "/L*V"
+                "`"$(Join-Path $DirTemp "$Name-$Operation.log")`""
+                "WRAPPED_ARGUMENTS=`"--mode unattended`""
+            )
+        }
+    }
 )
 
-$Cleanup   = $true
-$Uninstall = $true
+#endregion ─────────────────────────────────────────── [VAR.App] ──────────────────────────────────────────────────────
 
-#region Install Variables --------------------------------
+#region ──────────────────────────────────────────── [VAR.Install] ────────────────────────────────────────────────────
 
-$VerbosePreference = "Continue"
-$TempDirectory = "C:\Temp\NinjaOne"
-$PowerShellVersion = $PSVersionTable.PSVersion
-$App = "NinjaOne"
-$DownloadApp = "https://app.ninjarmm.com/ws/api/v2/generic-installer/NinjaOneAgent-x86.msi"
-$TempFileName = "NinjaOneAgent-x86.msi"
-$TempFilePath = Join-Path -Path $TempDirectory -ChildPath $TempFileName
-$ServiceName_NinjaOne = “NinjaRMMAgent”
+$DirTemp      = "C:\Temp\NinjaOne"
+$PathTempFile = Join-Path -Path $DirTemp -ChildPath $MSI
+$DownloadApp  = "https://app.ninjarmm.com/ws/api/v2/generic-installer/NinjaOneAgent-x86.msi"
+$MSI          = "NinjaOneAgent-x86.msi"
+#$Service      = “NinjaRMMAgent”
+#$TokenID      = $(Ninja-Property-Get ninjaTokenId)
 
-#endregion ------------------------------------------------
+#endregion ───────────────────────────────────────── [VAR.Install] ────────────────────────────────────────────────────
 
-#region Uninstall Variables -------------------------------
+#region ─────────────────────────────────────────── [VAR.Uninstall] ───────────────────────────────────────────────────
 
-# Define regkey paths based on system architecture
-$RegKeyArch      = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
-$RegKeySoftware  = "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC\NinjaRMMAgent"
-$RegKeyUninstall = "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall"
-$RegKeySystem    = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products"
-$RegKeyExeMsi    = "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed"
+if ($Operation -eq "Cleanup") {
+    & {
+        # Define regkey paths based on system architecture
+        $RegKeyArch     = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
+        $RegKeySoftware = "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC\NinjaRMMAgent"
+        $RegKeyExeMsi   = "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed"
 
-# Define Ninja installation directory
-$DirNinjaData = Join-Path -Path $env:ProgramData -ChildPath "NinjaRMMAgent"
+        # Define Ninja installation directory
+        $DirNinjaData = Join-Path -Path $env:ProgramData -ChildPath "NinjaRMMAgent"
 
-# Get Ninja directory via registry or fallback to service path
-$DirNinja = & {
-    # [Primary] Registry path lookup
-    if ($DirNinjaReg = Get-ItemPropertyValue -Path $RegKeySoftware -Name Location | 
-                       Where-Object { Test-Path (Join-Path $_ "NinjaRMMAgent.exe") }) {
-        return $DirNinjaReg.Replace('/', '\')
-    }
-    # [Fallback] Service path lookup
-    $DirNinjaService = Get-CimInstance -ClassName Win32_Service -Filter 'Name LIKE "NinjaRMMAgent"' |
-                       Select-Object -First 1      
-    if ($DirNinjaService -and $DirNinjaService.PathName) {
-        $DirNinjaServicePath = ($DirNinjaService.PathName | Split-Path).Replace('"', '')
-        if (Test-Path (Join-Path $DirNinjaServicePath "NinjaRMMAgent.exe")) {
-            return $DirNinjaServicePath.Replace('/', '\')
+        # Get Ninja directory via registry or fallback to service path
+        $DirNinja = & {
+            # [Primary] Registry path lookup
+            if ($DirNinjaReg = Get-ItemPropertyValue -Path $RegKeySoftware -Name Location | 
+                           Where-Object { Test-Path (Join-Path $_ "NinjaRMMAgent.exe") }) {
+                return $DirNinjaReg.Replace('/', '\')
+            }
+            # [Fallback] Service path lookup
+            $DirNinjaService = Get-CimInstance -ClassName Win32_Service -Filter 'Name LIKE "NinjaRMMAgent"' |
+                               Select-Object -First 1      
+            if ($DirNinjaService -and $DirNinjaService.PathName) {
+                $DirNinjaServicePath = ($DirNinjaService.PathName | Split-Path).Replace('"', '')
+                if (Test-Path (Join-Path $DirNinjaServicePath "NinjaRMMAgent.exe")) {
+                    return $DirNinjaServicePath.Replace('/', '\')
+                }
+            }
         }
     }
 }
 
-#endregion ------------------------------------------------
+#endregion ──────────────────────────────────────── [VAR.Uninstall] ───────────────────────────────────────────────────
 
-#endregion ------------------------------------------------------------------------------------------------------------
+#endregion ══════════════════════════════════════════ {VARIABLES} ═════════════════════════════════════════════════════
 
-#region FUNCTIONS -----------------------------------------------------------------------------------------------------
 
-function Remove-NinjaRMM {
+#region ══════════════════════════════════════════ {MAIN.FUNCTIONS} ═══════════════════════════════════════════════════
 
+function Invoke-AppInstaller {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory,ValueFromPipelineByPropertyName)][string]$Name,
+        [Parameter(ValueFromPipelineByPropertyName)][string]$Path,
+        [Parameter(ValueFromPipelineByPropertyName)][scriptblock]$MsiInstall,
+        [Parameter(ValueFromPipelineByPropertyName)][scriptblock]$MsiUninstall,
+        [Parameter(ValueFromPipelineByPropertyName)][scriptblock]$ExeInstall,
+        [Parameter(ValueFromPipelineByPropertyName)][scriptblock]$ExeUninstall,
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
+        [ValidateSet("Install", "Uninstall", "Repair")]
+        [string]$Operation
+    )
+
+    process {
+        try {
+            Write-Host "[INFO] Performing $Operation operation for $Name..."
+
+            # Generate log path
+            $LogPath = if ($Path -and (Test-Path $Path)) {
+                Join-Path -Path (Split-Path -Path $Path -Parent) -ChildPath "$Name-$Operation.log"
+            } else {
+                Join-Path -Path $env:TEMP -ChildPath "$Name-$Operation.log"
+            }
+
+            # Determine installer type and build arguments
+            $ArgList = @()
+            $ProcessExe = $null
+
+            switch -Wildcard ($Operation) {
+                "Install" {
+                    if (-not $Path -or -not (Test-Path $Path)) { throw "[FAIL] Installer path not found for $Name" }
+                    $Installer = (Get-ChildItem -Path $Path | Select-Object -First 1 -ExpandProperty FullName)
+                    switch -Wildcard ($Installer) {
+                        "*.msi" {
+                            $ProcessExe = "msiexec.exe"
+                            $ArgList = if ($MsiInstall) { 
+                                (& $MsiInstall) -join " "
+                            } else {
+                                (@("/i", "`"$Installer`"", "/qn", "/norestart", "/L*V", "`"$LogPath`"")) -join " "
+                            }
+                        }
+                        "*.exe" {
+                            $ProcessExe = $Installer
+                            $ArgList = if ($ExeInstall) { 
+                                & $ExeInstall
+                            } else {
+                                @("/quiet", "/norestart")
+                            }
+                        }
+                        default { throw "[FAIL] Unknown installer type for $Name" }
+                    }
+                }
+                "Uninstall" {
+                    # Try GUID based uninstall first
+                    Write-Host "[INFO] Attempting to find GUID for $Name..."
+                    $GUID = Get-GUID -App $Name
     
-    if ($Uninstall) {
+                    switch ($true) {
+                        {$GUID} {
+                            # GUID based uninstall
+                            $ProcessExe = "msiexec.exe"
+                            $ArgList    = if ($MsiUninstall) { 
+                                (& $MsiUninstall) -join " "
+                            } else {
+                                (@("/x", $GUID, "/qn", "/norestart", "/L*V", "`"$LogPath`"")) -join " "
+                            }
+                            Write-Host "[INFO] Found GUID: $GUID"
+                            break
+                        }
+                        {$Path -and (Test-Path $Path)} {
+                            # File based uninstall
+                            $Installer = (Get-ChildItem -Path $Path | Select-Object -First 1 -ExpandProperty FullName)
+                            switch -Wildcard ($Installer) {
+                                "*.msi" {
+                                    $ProcessExe = "msiexec.exe"
+                                    $ArgList    = if ($MsiUninstall) { 
+                                        (& $MsiUninstall) -join " "
+                                    } else {
+                                        (@("/x", "`"$Installer`"", "/qn", "/norestart", "/L*V", "`"$LogPath`"")) -join " "
+                                    }
+                                }
+                                "*.exe" {
+                                    $ProcessExe = $Installer
+                                    $ArgList    = if ($ExeUninstall) { 
+                                        & $ExeUninstall 
+                                    } else {
+                                        @("/uninstall", "/quiet", "/norestart")
+                                    }
+                                }
+                                default { throw "[FAIL] Unknown uninstaller type for $Name" }
+                            }
+                        }
+                        default {
+                            throw "[FAIL] No GUID found and no uninstall file path provided for $Name"
+                        }
+                    }
+                }
+            }
+            # Execute the process
+            Write-Host "[INFO] Executing: $ProcessExe $($ArgList -join ' ')"
+            $Process = Start-Process -FilePath $ProcessExe -ArgumentList $ArgList -Wait -NoNewWindow -PassThru
 
-
-        # Try to get the uninstall string from standard uninstall registry path
-        $UninstallString = Get-ItemProperty -Path "$RegKeyUninstall\*" -EA SilentlyContinue |
-                           Where-Object { $_.DisplayName -eq 'NinjaRMMAgent' -and $_.UninstallString -match 'msiexec' } |
-                           Select-Object -ExpandProperty UninstallString -EA SilentlyContinue |
-                           Select-Object -First 1
-
-        # If not found, try the system installer registry path
-        if (-not $UninstallString) {
-            $UninstallString = Get-ChildItem -Path $RegKeySystem -EA SilentlyContinue |
-                ForEach-Object {
-                    $InstallPropsPath = Join-Path $_.PSPath "InstallProperties"
-                    $Props = Get-ItemProperty -Path $InstallPropsPath -EA SilentlyContinue
-                    if ($Props.DisplayName -eq 'NinjaRMMAgent') { $Props.UninstallString } } | Select-Object -First 1
+            # Evaluate result
+            if ($null -eq $Process.ExitCode) {
+                Write-Host "[WARN] $Name $Operation did not return an exit code. Assuming success."
+            } else {
+                switch ($Process.ExitCode) {
+                    0       { Write-Host "[SUCCESS] $Name $Operation completed successfully" }
+                    3010    { Write-Host "[SUCCESS] $Name $Operation completed successfully (reboot required)" }
+                    default { throw "[FAIL] $Name $Operation failed with exit code $($Process.ExitCode). See $LogPath" }
+                }
+            }
         }
-
-        # Extract the GUID from the uninstall string
-        $GUID = if ($UninstallString) { [regex]::Match($UninstallString, "\{[A-F0-9\-]+\}").Value }
-
-        if ($GUID) {
-            Start-Process -FilePath (Join-Path $DirNinja "NinjaRMMAgent.exe") -ArgumentList "-disableUninstallPrevention NOUI" -WindowStyle Hidden -Wait
-            $LogPath = "$env:windir\temp\NinjaRMMAgent_uninstall.log"
-            $Arguments = "/x $GUID /quiet /L*v `"$LogPath`" WRAPPED_ARGUMENTS=`"--mode unattended`""
-            Start-Process -FilePath "msiexec.exe" -ArgumentList $Arguments -Wait
-        } else {
-            Write-Warning "NinjaRMMAgent product not found in MSI database."
+        catch {
+            Write-Host "[FAIL] $Name $Operation failed: $($_.Exception.Message)"
+            throw
         }
     }
+}
 
-    if ($Cleanup) {
+function Clear-NinjaRMM {
+     if ($Cleanup) {
         # Stop and remove services
         $servicesToRemove = @("NinjaRMMAgent", "nmsmanager")
         foreach ($ServiceName in $servicesToRemove) {
@@ -152,89 +266,52 @@ function Remove-NinjaRMM {
     }
 
     foreach ($Check in $FailedChecks) { Write-Host $Check -ForegroundColor Red }
+
 }
-#endregion -----------------------------------------------------------------------------------------------------------------
 
-#region Install Functions --------------------------------------------------------------------------------------------------
+#endregion ═══════════════════════════════════════ {MAIN.FUNCTIONS} ═══════════════════════════════════════════════════
 
-###---Checks if Bitdefender or S1 service exists---###
-function Confirm-Service {
-    Write-Verbose "Checking if $ServiceName_NinjaOne exists."
-    if (Get-Service $ServiceName_NinjaOne -EA SilentlyContinue) {
-        Write-Verbose "$ServiceName_NinjaOne exists, $App is already installed. Terminating script."
-        exit
-    } else {
-        Write-Verbose "$ServiceName_NinjaOne does not exist, continuing script."
+
+#region ════════════════════════════════════════ {ANCILLARY.FUNCTIONS} ════════════════════════════════════════════════
+
+function Get-GUID {
+    param (
+        [string]$App
+    )
+
+    # Define registry key paths based on system architecture
+    $RegKeyArch      = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
+    $RegKeySystem    = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products"
+    $RegKeyUninstall = "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall"
+
+    # Method 1: Try standard uninstall registry path
+    $UninstallString = Get-ItemProperty -Path "$RegKeyUninstall\*" -EA SilentlyContinue |
+                       Where-Object { $_.DisplayName -like "*$App*" -and $_.UninstallString -match 'msiexec' } |
+                       Select-Object -ExpandProperty UninstallString -EA SilentlyContinue | Select-Object -First 1
+
+    # Method 2: If not found, try the system installer registry path
+    if (-not $UninstallString) {
+        $UninstallString = Get-ChildItem -Path $RegKeySystem -EA SilentlyContinue |
+            ForEach-Object {
+                $InstallPropsPath = Join-Path $_.PSPath "InstallProperties"
+                $Props = Get-ItemProperty -Path $InstallPropsPath -EA SilentlyContinue
+                if ($Props.DisplayName -like "*$App*") { $Props.UninstallString }
+            } | Select-Object -First 1
+    }
+
+    # Extract and return the GUID from the uninstall string if found
+    if ($UninstallString) {
+        return [regex]::Match($UninstallString, "\{[A-F0-9\-]+\}").Value
+    } else { 
+        return $null
     }
 }
 
-###---Creates temporary directory---###
-function Confirm-TempPath {
-    Write-Verbose "Checking if $TempDirectory exists."
-    if(Test-Path -Path $TempDirectory) {
-        Write-Verbose "$TempDirectory exists."
-    } else {
-        Write-Verbose "Creating $TempDirectory."
-        New-Item -Path $TempDirectory -ItemType "directory" > $null
-        Write-Verbose "$TempDirectory created."
-    }
-}
+#endregion ═════════════════════════════════════ {ANCILLARY.FUNCTIONS} ════════════════════════════════════════════════
 
-###---Checks if installer exists---###
-function Confirm-Installer {
-    Write-Verbose "Checking if $App installer already exists."
-    if (Test-Path -LiteralPath $TempFilePath) {
-        Write-Verbose "$App installer exists, skipping download"
-        Write-Verbose "Installing $App."
-    Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$TempFilePath`" TOKENID=$TOKENID /qn /norestart" -Wait -NoNewWindow
 
-    } else {
-        Write-Verbose "$App installer does not exist, continuing to download installer."
-        Get-NinjaOne
-    }
-}
+#region ═════════════════════════════════════════ {SCRIPT.EXECUTIONS} ═════════════════════════════════════════════════
 
-###---Downloads and Installs BDGZ---###
-function Get-NinjaOne {
-    Write-Verbose "Downloading $App installer to $TempDirectory."
-    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Internet Explorer\Main" -Name "DisableFirstRunCustomize" -Value 2
-    if($PowerShellVersion -lt "3.0") {
-        Import-Module BitsTransfer
-        Start-BitsTransfer -Source $DownloadApp -Destination $TempFilePath -EA Stop
-    } else {
-        [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
-        Invoke-WebRequest -Uri $DownloadApp -UseBasicParsing -OutFile $TempFilePath -EA Stop
-    }
-    Write-Verbose "$App has finished downloading."
-    Write-Verbose "Installing $App."
-}
+$App | Invoke-AppInstaller -Operation "Uninstall"
 
-###---Checks if Bitdefender service exists after attempted install---###
-function Confirm-AppInstall {
-    if (Get-Service $ServiceName_NinjaOne -EA SilentlyContinue) {
-        Write-Verbose "$ServiceName_NinjaOne exists, $App has been installed."
-        Write-Verbose "Deleting temporary directory folder."
-        Remove-Item $TempDirectory -recurse -force
-        Write-Verbose "Temporary directory has been deleted."
-    } else {
-        if (Test-PendingReboot) {
-            Write-Verbose "Reboot is required before proceeding with installation. Please reboot then run script again."
-        } else {
-            Write-Verbose "$App has not been installed due to an error. Please attempt manual installation."
-        }
-    }
-}
-
-# endregion ----------------------------------------------------------------------------------------------------------------
-
-#region Executions ---------------------------------------------------------------------------------------------------------
-
-Confirm-TempPath
-Get-NinjaOne
-Remove-NinjaRMM
-Confirm-Service
-Confirm-TempPath
-Confirm-Installer
-Confirm-AppInstall
-
-#endregion -----------------------------------------------------------------------------------------------------------------
+#endregion ══════════════════════════════════════ {SCRIPT.EXECUTIONS} ═════════════════════════════════════════════════
