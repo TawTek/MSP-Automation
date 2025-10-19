@@ -3,10 +3,18 @@ function New-Region {
         [string]$Title,
         [ValidateSet('Main','Sub','Nest')]
         [string]$Level,
-        [ValidateSet('Region','EndRegion')]
-        [string]$Type
+        [ValidateSet('Region','EndRegion','EndRegionOnly')]
+        [string]$Type,
+        [int]$LineLength = 120,
+        [switch]$Clear
     )
+
+    if ($Clear) {
+        $script:RegionCollection = $null
+        return
+    }
     
+    # Character and enclosure styles for each level
     switch ($Level) {
         'Main'   { 
             $Decoration     = '═'
@@ -19,23 +27,41 @@ function New-Region {
             $RightEnclosure = ']'
         }
         'Nest' { 
-            $Decoration     = '-'
+            $Decoration     = '~'
             $LeftEnclosure  = '<'
             $RightEnclosure = '>'
         }
     }
-
+    
+    # Prefix based on region type
     switch ($Type) {
-        'EndRegion' { $Prefix = "#endregion" }
-        'Region'    { $Prefix = "#region" }
+        'EndRegion'     { $Prefix = "#endregion" }
+        'EndRegionOnly' { $Prefix = "#endregion" }
+        'Region'        { $Prefix = "#region" }
     }
     
-    $Content  = " ${LeftEnclosure} ${Title}${RightEnclosure} "
-    $TotalPad = 119 - $Content.Length
-    $LeftPad  = $Decoration * [math]::Floor($TotalPad / 2)
-    $RightPad = $Decoration * ($TotalPad - [math]::Floor($TotalPad / 2))
-    $Centered = "$LeftPad$Content$RightPad"
-    $Result   = "$Prefix " + $Centered.Substring(("$Prefix ").Length)
+    # Handle EndRegionOnly case (no title)
+    if ($Type -eq 'EndRegionOnly') {
+        $PrefixWithSpace = "$Prefix "
+        $PaddingNeeded   = ($LineLength - 1) - $PrefixWithSpace.Length
+        $FullLine        = $Decoration * $PaddingNeeded
+        $Result          = "$PrefixWithSpace$FullLine"
+    } else {
+        $Content  = " ${LeftEnclosure}${Title}${RightEnclosure} "
+        $TotalPad = ($LineLength - 1) - $Content.Length
+        $LeftPad  = $Decoration * [math]::Floor($TotalPad / 2)
+        $RightPad = $Decoration * ($TotalPad - [math]::Floor($TotalPad / 2))
+        $Centered = "$LeftPad$Content$RightPad"
+        $Result   = "$Prefix " + $Centered.Substring(("$Prefix ").Length)
+    }
+    
+    # Add to collection and copy all
+    if (-not $script:RegionCollection) { $script:RegionCollection = @() }
+    
+    $script:RegionCollection += $Result
+    
+    # Copy the entire collection
+    $script:RegionCollection -join "`r`n" | Set-Clipboard
     
     return $Result
 }
@@ -43,7 +69,9 @@ function New-Region {
 # Usage Examples:
 # New-Region -Title "FUNCTION.MAIN" -Level Main -Type Region
 # New-Region -Title "FUNCTION.MAIN" -Level Main -Type EndRegion
-# New-Region -Title "FUNCTION.MAIN" -Level Sub -Type Region
-# New-Region -Title "FUNCTION.MAIN" -Level Sub -Type EndRegion
+# New-Region -Title "FUNCTION.MAIN" -Level Sub -Type Region -LineLength 100
+# New-Region -Title "FUNCTION.MAIN" -Level Sub -Type EndRegion -LineLength 100
 # New-Region -Title "FUNCTION.MAIN" -Level Nest -Type Region
 # New-Region -Title "FUNCTION.MAIN" -Level Nest -Type EndRegion
+# New-Region -EndRegionOnly
+# New-Region -Clear
