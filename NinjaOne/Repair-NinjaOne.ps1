@@ -1,7 +1,7 @@
 #region ═════════════════════════════════════════ { VARIABLE.GLOBAL } ═════════════════════════════════════════════════
 
-$DirTemp = 'C:\Temp'
-$LogFile = 'C:\Temp\Log_DeployNinja.log'
+$DirTemp = 'C:\Temp'; if (-not (Test-Path $DirTemp)) { New-Item -Path $DirTemp -ItemType Directory -Force | Out-Null }
+$LogFile = Join-Path -Path $DirTemp -ChildPath 'Log_DeployNinja.log'
 
 #region ───────────────────────────────────────────── [ VAR.App ] ─────────────────────────────────────────────────────
 
@@ -84,9 +84,7 @@ function Invoke-AppInstaller {
         [Parameter(ValueFromPipelineByPropertyName)][array]$MsiUninstall,
         [Parameter(ValueFromPipelineByPropertyName)][array]$ExeInstall,
         [Parameter(ValueFromPipelineByPropertyName)][array]$ExeUninstall,
-        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
-        [ValidateSet("install", "uninstall")]
-        [string]$Action
+        [Parameter(Mandatory,ValueFromPipelineByPropertyName)][string]$Action
     )
 
     process {
@@ -275,7 +273,6 @@ function Clear-NinjaRMM {
 
 function Get-File {
 
-    #region LOGIC -----------------------------------------------------------------------------------------------------------
     <#
     [SUMMARY]
     Downloads a file from a specified URL/UNC path and saves it to a specified destination.
@@ -294,7 +291,6 @@ function Get-File {
     6. If the file extension is .zip, extract the archive to the Path directory.
     7. If all download methods fail, throw an error.
     #>
-    #endregion -------------------------------------------------------------------------------------------------------------
 
     [CmdletBinding()]
     param(
@@ -375,6 +371,60 @@ function Get-GUID {
     }
 }
 
+function Set-Dir {
+
+    <#
+    [SUMMARY]
+    Creates or deletes a directory at a specified path.
+
+    [PARAMETERS]
+    - $Path  : The path to create or delete the directory at.
+    - $Create: If declared, create the directory.
+    - $Remove: If declared, delete the directory.
+
+    [LOGIC]
+    1. Check if both $Create and $Remove switches are not declared, if so, throw an error.
+    2. Create or delete the directory based on the switches and whether the directory exists.
+    3. Throw an error if the directory cannot be created or deleted.
+    #>
+
+    param (
+        [string]$Path,
+        [switch]$Create,
+        [switch]$Remove
+    )
+
+    if (-not $Create.IsPresent -and -not $Remove.IsPresent) {
+        Write-Log -Fail "Must declare -Create or -Remove switch with Set-Dir function." 
+        exit 1
+    }
+
+    switch ($true) {
+        { $Create.IsPresent } {
+            if (-not (Test-Path -Path $Path)) {
+                try {
+                    Write-Log -Info "Creating directory at $Path."
+                    New-Item -Path $Path -ItemType "Directory" | Out-Null
+                    Write-Log -Pass "Created directory at $Path."
+                } catch {
+                    Write-Log -Fail "Failed to create directory. $($_.Exception.Message)"
+                }
+            } else {
+                Write-Log -Info "Directory exists at $Path"
+            }
+        }
+        { $Remove.IsPresent } {
+            try {
+                Write-Log -Info "Deleting directory at $Path."
+                Remove-Item -Path $Path -Recurse -Force -EA Stop
+                Write-Log -Pass "Directory deleted at $Path."
+            } catch {
+                Write-Log -Fail "Failed to remove directory. $($_.Exception.Message)"
+            }
+        }
+    }
+}
+
 function Write-Log {
     [CmdletBinding()]
     param(
@@ -395,7 +445,7 @@ function Write-Log {
         [string]$Decoration = "-",
         [int]$HeaderWidth   = 120
     )
-    
+
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
     if ($SystemInfo) {
@@ -494,6 +544,8 @@ foreach ($Action in $DeployConfig.Action) {
     Write-Log -Header $Action.ToUpper()
     switch ($Action) {
         'Bootstrap' {
+            if (Test-Path $DirTemp) { Write-Log -Info "Temporary directory initialized." }
+            else { Write-Log -Fail "Temporary directory initialization failed, terminating script." ; exit 1 }
             Write-Log -Info "Writing logs to $($DeployConfig.LogFile)"
             $NinjaInstall = & $NinjaRMM -Action 'install' -TokenID $DeployConfig.TokenID
             Get-File -URL $NinjaInstall.URL -Path $NinjaInstall.Path
