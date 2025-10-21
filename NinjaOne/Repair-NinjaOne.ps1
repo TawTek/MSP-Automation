@@ -3,9 +3,9 @@
     Deploys, removes, or cleans up NinjaRMM agent with comprehensive logging and error handling.
 
 .DESCRIPTION
-    ===XECUTION WORKFLOW:===
+    ===EXECUTION WORKFLOW:===
     
-    [BOOTSTRAP PHASE]
+    [PHASE - BOOTSTRAP]
     1. Environment Preparation
        - Creates C:\Temp directory if missing
        - Initializes logging system $LogFile
@@ -13,20 +13,20 @@
        - Downloads installer
        - Validates MSI file exists before proceeding
 
-    [UNINSTALLATION PHASE]
+    [PHASE - UNINSTALLATION]
     2. Agent Removal (GUID-based priority)
        - Scans registry for existing NinjaRMM installation GUID
        - Uses msiexec /x with GUID for clean uninstall
        - Falls back to file-based uninstall if GUID not found
        - Applies silent uninstall parameters (/qn, /norestart)
 
-    [INSTALLATION PHASE] 
+    [PHASE - INSTALLATION] 
     3. Agent Deployment
        - Executes msiexec /i with TOKENID parameter for authentication
        - Uses silent installation mode (/qn) with verbose logging (/L*V)
        - Monitors installation process and validates exit codes
 
-    [CLEANUP PHASE]
+    [PHASE - CLEANUP]
     4. Comprehensive Removal (when -Cleanup specified)
        - Stops and removes NinjaRMMAgent and nmsmanager services
        - Terminates NinjaRMMProxyProcess64 if running
