@@ -1,51 +1,45 @@
 #region ═════════════════════════════════════════ { VARIABLE.GLOBAL } ═════════════════════════════════════════════════
 
+$DirTemp = "C:\Temp"
+$LogFile = "C:\Temp\Log_DeployNinja.log"
+
 #region ───────────────────────────────────────────── [ VAR.App ] ─────────────────────────────────────────────────────
 
-$App = @(
+$NinjaRMM = {
+    param($Action, $TokenID)
+    $Installer = Join-Path -Path $DirTemp -ChildPath 'NinjaOneAgent-x86.msi'
+    
     [PSCustomObject]@{
-        Name       = "NinjaRMM"
-        Path       = $PathTempFile
-        MsiInstall = {
-            return @(
-                "/i"
-                "`"$PathTempFile`""
-                "TOKENID=$TokenID"
-                "/qn"
-                "/L*V"
-                "`"$(Join-Path $DirTemp "$Name-$Operation.log")`""
-            )
-        }
-        MsiUninstall = {
-            return @(
-                "/x"
-                if ($GUID) { $GUID } else { "`"$PathTempFile`"" }
-                "/qn"
-                "/norestart" 
-                "/L*V"
-                "`"$(Join-Path $DirTemp "$Name-$Operation.log")`""
-                "WRAPPED_ARGUMENTS=`"--mode unattended`""
-            )
-        }
+        Name       = 'NinjaRMM'
+        Action     = $Action
+        Path       = $Installer
+        Service    = 'NinjaRMMAgent'
+        URL        = 'https://app.ninjarmm.com/ws/api/v2/generic-installer/NinjaOneAgent-x86.msi'
+        MsiInstall = @(
+            "/i"
+            "`"$Installer`""
+            "TOKENID=$TokenID"
+            "/qn"
+            "/L*V"
+            "`"$(Join-Path $DirTemp "Log_NinjaRMM-$Action.log")`""
+        )
+        MsiUninstall = @(
+            "/x"
+            "`"$Installer`""
+            "/qn"
+            "/norestart" 
+            "/L*V"
+            "`"$(Join-Path $DirTemp "Log_NinjaRMM-$Action.log")`""
+            "WRAPPED_ARGUMENTS=`"--mode unattended`""
+        )
     }
-)
-
-#endregion ────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-#region ─────────────────────────────────────────── [ VAR.Install ] ───────────────────────────────────────────────────
-
-$DirTemp      = "C:\Temp\NinjaOne"
-$PathTempFile = Join-Path -Path $DirTemp -ChildPath $MSI
-$DownloadApp  = "https://app.ninjarmm.com/ws/api/v2/generic-installer/NinjaOneAgent-x86.msi"
-$MSI          = "NinjaOneAgent-x86.msi"
-#$Service      = “NinjaRMMAgent”
-#$TokenID      = $(Ninja-Property-Get ninjaTokenId)
+}
 
 #endregion ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 #region ─────────────────────────────────────────── [ VAR.Cleanup ] ───────────────────────────────────────────────────
 
-if ($Operation -eq "Cleanup") {
+if ($Action -eq "Cleanup") {
     & {
         # Define regkey paths based on system architecture
         $RegKeyArch     = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
@@ -87,118 +81,133 @@ function Invoke-AppInstaller {
     param(
         [Parameter(Mandatory,ValueFromPipelineByPropertyName)][string]$Name,
         [Parameter(ValueFromPipelineByPropertyName)][string]$Path,
-        [Parameter(ValueFromPipelineByPropertyName)][scriptblock]$MsiInstall,
-        [Parameter(ValueFromPipelineByPropertyName)][scriptblock]$MsiUninstall,
-        [Parameter(ValueFromPipelineByPropertyName)][scriptblock]$ExeInstall,
-        [Parameter(ValueFromPipelineByPropertyName)][scriptblock]$ExeUninstall,
+        [Parameter(ValueFromPipelineByPropertyName)][array]$MsiInstall,
+        [Parameter(ValueFromPipelineByPropertyName)][array]$MsiUninstall,
+        [Parameter(ValueFromPipelineByPropertyName)][array]$ExeInstall,
+        [Parameter(ValueFromPipelineByPropertyName)][array]$ExeUninstall,
         [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
-        [ValidateSet("Install", "Uninstall", "Repair")]
-        [string]$Operation
+        [ValidateSet("install", "uninstall")]
+        [string]$Action
     )
 
     process {
         try {
-            Write-Host "[INFO] Performing $Operation operation for $Name..."
+            Write-Log -Info "Starting $Action task for $Name."
 
             # Generate log path
             $LogPath = if ($Path -and (Test-Path $Path)) {
-                Join-Path -Path (Split-Path -Path $Path -Parent) -ChildPath "$Name-$Operation.log"
+                Join-Path -Path (Split-Path -Path $Path -Parent) -ChildPath "$Name-$Action.log"
             } else {
-                Join-Path -Path $env:TEMP -ChildPath "$Name-$Operation.log"
+                Join-Path -Path $env:TEMP -ChildPath "$Name-$Action.log"
             }
 
             # Determine installer type and build arguments
             $ArgList = @()
             $ProcessExe = $null
 
-            switch -Wildcard ($Operation) {
+            switch -Wildcard ($Action) {
                 "Install" {
-                    if (-not $Path -or -not (Test-Path $Path)) { throw "[FAIL] Installer path not found for $Name" }
-                    $Installer = (Get-ChildItem -Path $Path | Select-Object -First 1 -ExpandProperty FullName)
-                    switch -Wildcard ($Installer) {
+                    if (-not $Path -or -not (Test-Path $Path)) {
+                        Write-Log -Fail "Installer path not found for $Name."
+                        exit 1
+                    }
+                    switch -Wildcard ($Path) {
                         "*.msi" {
                             $ProcessExe = "msiexec.exe"
                             $ArgList = if ($MsiInstall) { 
-                                (& $MsiInstall) -join " "
+                                $MsiInstall -join " "  # ← Use array directly
                             } else {
-                                (@("/i", "`"$Installer`"", "/qn", "/norestart", "/L*V", "`"$LogPath`"")) -join " "
+                                (@("/i", "`"$Path`"", "/qn", "/norestart", "/L*V", "`"$LogPath`"")) -join " "
                             }
                         }
                         "*.exe" {
-                            $ProcessExe = $Installer
+                            $ProcessExe = $Path
                             $ArgList = if ($ExeInstall) { 
-                                & $ExeInstall
+                                $ExeInstall  # ← Use array directly
                             } else {
                                 @("/quiet", "/norestart")
                             }
                         }
-                        default { throw "[FAIL] Unknown installer type for $Name" }
+                        default { 
+                            Write-Log -Fail "Unknown installer type for $Name."
+                            exit 1
+                        }
                     }
                 }
                 "Uninstall" {
                     # Try GUID based uninstall first
-                    Write-Host "[INFO] Attempting to find GUID for $Name..."
                     $GUID = Get-GUID -App $Name
-    
                     switch ($true) {
                         {$GUID} {
                             # GUID based uninstall
+                            Write-Log -Pass "Found GUID: $GUID"
                             $ProcessExe = "msiexec.exe"
                             $ArgList    = if ($MsiUninstall) { 
-                                (& $MsiUninstall) -join " "
+                                # Replace installer path with GUID in the array
+                                $modifiedArgs = $MsiUninstall.Clone()
+                                for ($i = 0; $i -lt $modifiedArgs.Count; $i++) {
+                                    if ($modifiedArgs[$i] -match "`".*`"") {
+                                        $modifiedArgs[$i] = $GUID  # Replace quoted path with GUID
+                                        break
+                                    }
+                                }
+                                $modifiedArgs -join " "
                             } else {
                                 (@("/x", $GUID, "/qn", "/norestart", "/L*V", "`"$LogPath`"")) -join " "
                             }
-                            Write-Host "[INFO] Found GUID: $GUID"
                             break
                         }
                         {$Path -and (Test-Path $Path)} {
                             # File based uninstall
-                            $Installer = (Get-ChildItem -Path $Path | Select-Object -First 1 -ExpandProperty FullName)
-                            switch -Wildcard ($Installer) {
+                            Write-Log -Info "Using installer: $Path"
+                            switch -Wildcard ($Path) {
                                 "*.msi" {
                                     $ProcessExe = "msiexec.exe"
                                     $ArgList    = if ($MsiUninstall) { 
-                                        (& $MsiUninstall) -join " "
+                                        $MsiUninstall -join " "
                                     } else {
-                                        (@("/x", "`"$Installer`"", "/qn", "/norestart", "/L*V", "`"$LogPath`"")) -join " "
+                                        (@("/x", "`"$Path`"", "/qn", "/norestart", "/L*V", "`"$LogPath`"")) -join " "
                                     }
                                 }
                                 "*.exe" {
-                                    $ProcessExe = $Installer
+                                    $ProcessExe = $Path
                                     $ArgList    = if ($ExeUninstall) { 
-                                        & $ExeUninstall 
+                                        $ExeUninstall
                                     } else {
                                         @("/uninstall", "/quiet", "/norestart")
                                     }
                                 }
-                                default { throw "[FAIL] Unknown uninstaller type for $Name" }
+                                default { 
+                                    Write-Log -Fail "Unknown uninstaller type for $Name."
+                                    throw "Unknown uninstaller type for $Name."
+                                }
                             }
+                            break
                         }
                         default {
-                            throw "[FAIL] No GUID found and no uninstall file path provided for $Name"
+                            Write-Log -Fail "No GUID found or uninstall file path provided for $Name."
+                            exit 1
                         }
                     }
                 }
             }
-            # Execute the process
-            Write-Host "[INFO] Executing: $ProcessExe $($ArgList -join ' ')"
+            Write-Log -Info "$ArgList"
+            Write-Log -Info "Attempting to $Action $Name."
             $Process = Start-Process -FilePath $ProcessExe -ArgumentList $ArgList -Wait -NoNewWindow -PassThru
 
             # Evaluate result
             if ($null -eq $Process.ExitCode) {
-                Write-Host "[WARN] $Name $Operation did not return an exit code. Assuming success."
+                Write-Log -Warn "$Name $Action did not return an exit code, assuming success."
             } else {
                 switch ($Process.ExitCode) {
-                    0       { Write-Host "[SUCCESS] $Name $Operation completed successfully" }
-                    3010    { Write-Host "[SUCCESS] $Name $Operation completed successfully (reboot required)" }
-                    default { throw "[FAIL] $Name $Operation failed with exit code $($Process.ExitCode). See $LogPath" }
+                    0      { Write-Log -Pass "$Name $Action completed successfully." }
+                    3010   { Write-Log -Pass "$Name $Action completed successfully (reboot required)." }
+                    default { Write-Log -Fail "$Name $Action failed with exit code $($Process.ExitCode)." ; exit 1 }
                 }
             }
-        }
-        catch {
-            Write-Host "[FAIL] $Name $Operation failed: $($_.Exception.Message)"
-            throw
+        } catch {
+            Write-Log -Fail "$Name $Action failed: $($_.Exception.Message)"
+            exit 1
         }
     }
 }
@@ -307,11 +316,122 @@ function Get-GUID {
     }
 }
 
+function Write-Log {
+    [CmdletBinding()]
+    param(
+        [Parameter(ParameterSetName = "Info")][switch]$Info,
+        [Parameter(ParameterSetName = "Pass")][switch]$Pass,
+        [Parameter(ParameterSetName = "Warn")][switch]$Warn,
+        [Parameter(ParameterSetName = "Fail")][switch]$Fail,
+        [Parameter(ParameterSetName = "Header")][switch]$Header,
+        [Parameter(ParameterSetName = "HeaderEnd")][switch]$HeaderEnd,
+        [Parameter(ParameterSetName = "SystemInfo")][switch]$SystemInfo,
+        [Parameter(Position = 0, ParameterSetName = "Info")]
+        [Parameter(Position = 0, ParameterSetName = "Pass")]
+        [Parameter(Position = 0, ParameterSetName = "Warn")] 
+        [Parameter(Position = 0, ParameterSetName = "Fail")]
+        [Parameter(Position = 0, ParameterSetName = "Header")]
+        [string]$Message,
+        [string]$LogPath    = $LogFile,
+        [string]$Decoration = "-",
+        [int]$HeaderWidth   = 120
+    )
+    
+    $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+
+    if ($SystemInfo) {
+        $SystemInfoContent = @"
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> SYSTEM INFORMATION <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Execution Time:   $($TimeStamp)
+Executed By:      $($env:USERDOMAIN)\$($env:USERNAME)
+Host Computer:    $($env:COMPUTERNAME)
+PS Version:       $($PSVersionTable.PSVersion)
+Process ID:       $PID
+C: Drive Free:    $(try { [math]::Round((Get-PSDrive C).Free / 1GB, 2) } catch { "N/A" }) GB
+Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2) } catch { "N/A" }) GB
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+"@
+        Write-Host $SystemInfoContent -ForegroundColor "DarkGray"
+        $SystemInfoContent | Out-File -FilePath $LogPath -Encoding UTF8
+        return
+    }
+    
+    if ($Header) {
+        $ActualWidth    = $HeaderWidth - 1 # VSCode displays character position, PowerShell counts string length from 0
+        $Text           = $Message.Trim()
+        $TextWithSpaces = " $Text "
+        $TotalPadding   = $ActualWidth - $TextWithSpaces.Length
+        
+        # Truncate headers that are too long and add ellipsis
+        if ($TotalPadding -lt 0) {
+            $Text           = $Text.Substring(0, $ActualWidth - 5) + "..." # -5 accounts for '...' and spacing
+            $TextWithSpaces = " $Text "
+            $TotalPadding   = $ActualWidth - $TextWithSpaces.Length
+        }
+        
+        $LeftPadding  = [math]::Floor($TotalPadding / 2)
+        $RightPadding = $TotalPadding - $LeftPadding
+        $HeaderText = "`r`n$($Decoration * $LeftPadding)$TextWithSpaces$($Decoration * $RightPadding)"
+        
+        Write-Host $HeaderText -ForegroundColor "DarkGray"
+        $HeaderText | Out-File -FilePath $LogPath -Append -Encoding UTF8
+        return
+    }
+
+    # Handle HeaderEnd - full line with decoration only
+    if ($HeaderEnd) {
+        $FullLine = $Decoration * ($HeaderWidth - 1)
+        Write-Host $FullLine -ForegroundColor "DarkGray"
+        $FullLine | Out-File -FilePath $LogPath -Append -Encoding UTF8
+        return
+    }
+
+    # Determine log type and formatting for regular messages
+    switch ($PSCmdlet.ParameterSetName) {
+        "Info" { 
+            $ConsoleColor = "White"
+            $FilePrefix = "[INFO]"
+        }
+        "Pass" { 
+            $ConsoleColor = "DarkCyan"
+            $FilePrefix = "[PASS]"
+        }
+        "Warn" { 
+            $ConsoleColor = "Yellow" 
+            $FilePrefix = "[WARN]"
+        }
+        "Fail" { 
+            $ConsoleColor = "Red"
+            $FilePrefix = "[FAIL]"
+        }
+    }
+    
+    $ConsoleOutput = "$FilePrefix $Message"
+    $FileOutput    = "$Timestamp $FilePrefix $Message"
+    
+    Write-Host $ConsoleOutput -ForegroundColor $ConsoleColor
+    
+     try {
+        $FileOutput | Out-File -FilePath $LogPath -Append -Encoding UTF8
+    } catch {
+        Write-Warning "Failed to write to log file: $($_.Exception.Message)"
+    }
+}
+
 #endregion ════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 
 #region ════════════════════════════════════════ { SCRIPT.EXECUTION } ═════════════════════════════════════════════════
 
-$App | Invoke-AppInstaller -Operation "Uninstall"
+Write-Log -SystemInfo
+Write-Log -Header 'ENVIRONMENT'
+Write-Log -Info "Writing logs to $LogFile"
+Write-Log -HeaderEnd
+Write-Log -Header 'UNINSTALLATION'
+& $NinjaRMM -Action 'uninstall' | Invoke-AppInstaller
+Write-Log -HeaderEnd
+Write-Log -Header 'INSTALLATION'
+& $NinjaRMM -Action 'install' -TokenID 'ab8a6972-23e5-4c0e-bf88-73611c3523bb' | Invoke-AppInstaller
+Write-Log -HeaderEnd
 
 #endregion ════════════════════════════════════════════════════════════════════════════════════════════════════════════
