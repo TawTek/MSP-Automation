@@ -93,9 +93,9 @@ function Invoke-AppInstaller {
 
             # Generate log path
             $LogPath = if ($Path -and (Test-Path $Path)) {
-                Join-Path -Path (Split-Path -Path $Path -Parent) -ChildPath "$Name-$Action.log"
+                Join-Path -Path (Split-Path -Path $Path -Parent) -ChildPath "Log_$Name-$Action.log"
             } else {
-                Join-Path -Path $env:TEMP -ChildPath "$Name-$Action.log"
+                Join-Path -Path $env:TEMP -ChildPath "Log_$Name-$Action.log"
             }
 
             # Determine installer type and build arguments
