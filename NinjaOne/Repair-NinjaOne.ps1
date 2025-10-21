@@ -1,14 +1,13 @@
 #region ═════════════════════════════════════════ { VARIABLE.GLOBAL } ═════════════════════════════════════════════════
 
-$DirTemp = "C:\Temp"
-$LogFile = "C:\Temp\Log_DeployNinja.log"
+$DirTemp = 'C:\Temp'
+$LogFile = 'C:\Temp\Log_DeployNinja.log'
 
 #region ───────────────────────────────────────────── [ VAR.App ] ─────────────────────────────────────────────────────
 
 $NinjaRMM = {
     param($Action, $TokenID)
     $Installer = Join-Path -Path $DirTemp -ChildPath 'NinjaOneAgent-x86.msi'
-    
     [PSCustomObject]@{
         Name       = 'NinjaRMM'
         Action     = $Action
@@ -21,7 +20,7 @@ $NinjaRMM = {
             "TOKENID=$TokenID"
             "/qn"
             "/L*V"
-            "`"$(Join-Path $DirTemp "Log_NinjaRMM-$Action.log")`""
+            "`"{{LogPath}}`"" 
         )
         MsiUninstall = @(
             "/x"
@@ -29,7 +28,7 @@ $NinjaRMM = {
             "/qn"
             "/norestart" 
             "/L*V"
-            "`"$(Join-Path $DirTemp "Log_NinjaRMM-$Action.log")`""
+            "`"{{LogPath}}`"" 
             "WRAPPED_ARGUMENTS=`"--mode unattended`""
         )
     }
@@ -115,7 +114,7 @@ function Invoke-AppInstaller {
                         "*.msi" {
                             $ProcessExe = "msiexec.exe"
                             $ArgList = if ($MsiInstall) { 
-                                $MsiInstall -join " "  # ← Use array directly
+                                ($MsiInstall -join " ") -replace "{{LogPath}}", $LogPath
                             } else {
                                 (@("/i", "`"$Path`"", "/qn", "/norestart", "/L*V", "`"$LogPath`"")) -join " "
                             }
@@ -123,7 +122,7 @@ function Invoke-AppInstaller {
                         "*.exe" {
                             $ProcessExe = $Path
                             $ArgList = if ($ExeInstall) { 
-                                $ExeInstall  # ← Use array directly
+                                $ExeInstall
                             } else {
                                 @("/quiet", "/norestart")
                             }
@@ -135,7 +134,6 @@ function Invoke-AppInstaller {
                     }
                 }
                 "Uninstall" {
-                    # Try GUID based uninstall first
                     $GUID = Get-GUID -App $Name
                     switch ($true) {
                         {$GUID} {
@@ -143,15 +141,7 @@ function Invoke-AppInstaller {
                             Write-Log -Pass "Found GUID: $GUID"
                             $ProcessExe = "msiexec.exe"
                             $ArgList    = if ($MsiUninstall) { 
-                                # Replace installer path with GUID in the array
-                                $modifiedArgs = $MsiUninstall.Clone()
-                                for ($i = 0; $i -lt $modifiedArgs.Count; $i++) {
-                                    if ($modifiedArgs[$i] -match "`".*`"") {
-                                        $modifiedArgs[$i] = $GUID  # Replace quoted path with GUID
-                                        break
-                                    }
-                                }
-                                $modifiedArgs -join " "
+                                ($MsiUninstall -join " ") -replace "`"[^`"]*\.msi`"", $GUID -replace "{{LogPath}}", $LogPath
                             } else {
                                 (@("/x", $GUID, "/qn", "/norestart", "/L*V", "`"$LogPath`"")) -join " "
                             }
@@ -282,6 +272,75 @@ function Clear-NinjaRMM {
 
 
 #region ═══════════════════════════════════════ { FUNCTION.ANCILLARY } ════════════════════════════════════════════════
+
+function Get-File {
+
+    #region LOGIC -----------------------------------------------------------------------------------------------------------
+    <#
+    [SUMMARY]
+    Downloads a file from a specified URL/UNC path and saves it to a specified destination.
+
+    [PARAMETERS]
+    - $UNC        : If declared, copy the file from a UNC path.
+    - $URL        : The URL of the file to download.
+    - $Path: The path to save the file to.
+
+    [LOGIC]
+    1. Set the $ProgressPreference variable to 'SilentlyContinue'.
+    2. Set an array of download methods.
+    3. Set the Security Protocols.
+    4. Check if $UNC is declared, otherwise skip that download method.
+    5. Try each download method, if successful, break out of the loop.
+    6. If the file extension is .zip, extract the archive to the Path directory.
+    7. If all download methods fail, throw an error.
+    #>
+    #endregion -------------------------------------------------------------------------------------------------------------
+
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipelineByPropertyName)][string]$URL,
+        [Parameter(ValueFromPipelineByPropertyName)][string]$Path,
+        [Parameter(ValueFromPipelineByPropertyName)][string]$UNC
+    )
+
+    $ProgressPreference = 'SilentlyContinue'
+
+    if (Test-Path $Path) { Write-Log -Info "$Path exists." ; return }
+
+    # Set array for download methods
+    $DownloadMethods = @(
+        @{ Name = "copying from UNC Path"; Action = { Copy-Item -Path $UNC -Destination $Path -Force -EA Stop }},
+        @{ Name = "Invoke-WebRequest"; Action = { Invoke-WebRequest -Uri $URL -OutFile $Path -EA Stop }},
+        @{ Name = "Start-BitsTransfer"; Action = { Start-BitsTransfer -Source $URL -Destination $Path -EA Stop }},
+        @{ Name = "WebClient"; Action = { (New-Object System.Net.WebClient).DownloadFile($URL, $Path) }}
+    )
+
+    # Set Security Protocols
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    
+    # Loop through each download method
+    foreach ($Method in $DownloadMethods) {
+        if ($Method.Name -eq "copying from UNC Path") {if (-not $UNC -or -not (Test-Path -Path $UNC -EA SilentlyContinue)) { continue } }
+        try {
+            Write-Log -Info "Attempting to download by $($Method.Name)."
+            & $Method.Action
+            Write-Log -Pass "Download completed by $($Method.Name)."
+            $Downloaded = $true
+            #----Extract archive if file extension ends in .zip
+            if ($Path -like "*.zip") {
+                Write-Log -Info "Extracting $Path."
+                Expand-Archive -LiteralPath $Path -DestinationPath (Split-Path -Path $Path -Parent) -Force
+                Write-Log -Pass "Extraction complete."
+            }
+            break
+        } catch {
+            Write-Log -Fail "Failed to download by $($Method.Name). $($_.Exception.Message)"
+        }
+    }
+
+    # Terminate script if all $DownloadMethods fail
+    if (-not $Downloaded) { Write-Log -Fail "All download methods failed, terminating script." ; exit 1 }
+}
 
 function Get-GUID {
     param (
@@ -424,14 +483,19 @@ Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).T
 #region ════════════════════════════════════════ { SCRIPT.EXECUTION } ═════════════════════════════════════════════════
 
 Write-Log -SystemInfo
-Write-Log -Header 'ENVIRONMENT'
+
+Write-Log -Header 'PREREQUISITES'
 Write-Log -Info "Writing logs to $LogFile"
+$NinjaInstall = & $NinjaRMM -Action 'install' -TokenID ''
+Get-File -URL $NinjaInstall.URL -Path $NinjaInstall.Path
 Write-Log -HeaderEnd
+
 Write-Log -Header 'UNINSTALLATION'
 & $NinjaRMM -Action 'uninstall' | Invoke-AppInstaller
 Write-Log -HeaderEnd
+
 Write-Log -Header 'INSTALLATION'
-& $NinjaRMM -Action 'install' -TokenID 'ab8a6972-23e5-4c0e-bf88-73611c3523bb' | Invoke-AppInstaller
+$NinjaInstall | Invoke-AppInstaller
 Write-Log -HeaderEnd
 
 #endregion ════════════════════════════════════════════════════════════════════════════════════════════════════════════
