@@ -482,20 +482,30 @@ Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).T
 
 #region ════════════════════════════════════════ { SCRIPT.EXECUTION } ═════════════════════════════════════════════════
 
+$DeployConfig = @{
+    TokenID  = ''
+    Action   = @('Bootstrap', 'Uninstall', 'Install')
+    LogFile  = $LogFile
+}
+
 Write-Log -SystemInfo
 
-Write-Log -Header 'PREREQUISITES'
-Write-Log -Info "Writing logs to $LogFile"
-$NinjaInstall = & $NinjaRMM -Action 'install' -TokenID ''
-Get-File -URL $NinjaInstall.URL -Path $NinjaInstall.Path
-Write-Log -HeaderEnd
-
-Write-Log -Header 'UNINSTALLATION'
-& $NinjaRMM -Action 'uninstall' | Invoke-AppInstaller
-Write-Log -HeaderEnd
-
-Write-Log -Header 'INSTALLATION'
-$NinjaInstall | Invoke-AppInstaller
-Write-Log -HeaderEnd
+foreach ($Action in $DeployConfig.Action) {
+    Write-Log -Header $Action.ToUpper()
+    switch ($Action) {
+        'Bootstrap' {
+            Write-Log -Info "Writing logs to $($DeployConfig.LogFile)"
+            $NinjaInstall = & $NinjaRMM -Action 'install' -TokenID $DeployConfig.TokenID
+            Get-File -URL $NinjaInstall.URL -Path $NinjaInstall.Path
+        }
+        'Uninstall' {
+            & $NinjaRMM -Action 'uninstall' | Invoke-AppInstaller
+        }
+        'Install' {
+            $NinjaInstall | Invoke-AppInstaller
+        }
+    }
+    Write-Log -HeaderEnd
+}
 
 #endregion ════════════════════════════════════════════════════════════════════════════════════════════════════════════
