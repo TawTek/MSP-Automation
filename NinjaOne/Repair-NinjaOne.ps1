@@ -1,3 +1,76 @@
+<#
+.SYNOPSIS
+    Deploys, removes, or cleans up NinjaRMM agent with comprehensive logging and error handling.
+
+.DESCRIPTION
+    ===XECUTION WORKFLOW:===
+    
+    [BOOTSTRAP PHASE]
+    1. Environment Preparation
+       - Creates C:\Temp directory if missing
+       - Initializes logging system $LogFile
+       - Captures system information (OS, memory, disk space, PowerShell version)
+       - Downloads installer
+       - Validates MSI file exists before proceeding
+
+    [UNINSTALLATION PHASE]
+    2. Agent Removal (GUID-based priority)
+       - Scans registry for existing NinjaRMM installation GUID
+       - Uses msiexec /x with GUID for clean uninstall
+       - Falls back to file-based uninstall if GUID not found
+       - Applies silent uninstall parameters (/qn, /norestart)
+
+    [INSTALLATION PHASE] 
+    3. Agent Deployment
+       - Executes msiexec /i with TOKENID parameter for authentication
+       - Uses silent installation mode (/qn) with verbose logging (/L*V)
+       - Monitors installation process and validates exit codes
+
+    [CLEANUP PHASE]
+    4. Comprehensive Removal (when -Cleanup specified)
+       - Stops and removes NinjaRMMAgent and nmsmanager services
+       - Terminates NinjaRMMProxyProcess64 if running
+       - Deletes installation directories and program data
+       - Removes registry entries across multiple hives
+       - Verifies complete removal of all components
+
+    ===ARCHITECTURE===
+    - Pipeline-enabled design using ValueFromPipelineByPropertyName
+    - Dynamic log path generation (Log_AppName-Action.log)  
+    - Multi-method download system with automatic fallback
+    - 32/64-bit architecture detection for registry operations
+    - MSI/EXE installer support with extensible framework
+
+    ===ERROR HANDLING===
+    - Comprehensive try/catch blocks throughout execution
+    - Exit code validation with specific failure messages
+    - Multiple uninstall methods for reliable removal
+    - Download retry logic with method fallback
+
+.PARAMETER Action
+    Required. Specifies deployment action: 'install' or 'uninstall'
+
+.PARAMETER TokenID  
+    Required for installation. Authentication token provided by NinjaRMM platform.
+
+.PARAMETER Cleanup
+    Optional switch. Performs deep cleanup of all NinjaRMM components including registry.
+
+.LINK
+    https://ninjarmm.zendesk.com/hc/en-us/articles/36038775278349-Custom-Script-NinjaOne-Agent-Removal-Windows
+
+.NOTES
+    Developer: TawTek
+    Created  : 2023-01-01
+    Updated  : 2025-10-21
+    Version  : 10.0
+    
+    [Reference]
+    > https://ninjarmm.zendesk.com/hc/en-us/articles/36038775278349-Custom-Script-NinjaOne-Agent-Removal-Windows
+      - Base script that has been enhanced with: dynamic GUID detection, pipeline support, multi-method downloads,
+        comprehensive logging, parameterization, edge case error handling.
+#>
+
 #region ═════════════════════════════════════════ { VARIABLE.GLOBAL } ═════════════════════════════════════════════════
 
 $DirTemp = 'C:\Temp'; if (-not (Test-Path $DirTemp)) { New-Item -Path $DirTemp -ItemType Directory -Force | Out-Null }
@@ -278,8 +351,8 @@ function Get-File {
     Downloads a file from a specified URL/UNC path and saves it to a specified destination.
 
     [PARAMETERS]
-    - $UNC        : If declared, copy the file from a UNC path.
-    - $URL        : The URL of the file to download.
+    - $UNC : If declared, copy the file from a UNC path.
+    - $URL : The URL of the file to download.
     - $Path: The path to save the file to.
 
     [LOGIC]
