@@ -193,9 +193,9 @@ function Invoke-AppInstaller {
                         "*.exe" {
                             $ProcessExe = $Path
                             $ArgList = if ($ExeInstall) { 
-                                $ExeInstall
+                                ($ExeInstall -join " ") -replace "{{LogPath}}", $LogPath -split " "
                             } else {
-                                @("/quiet", "/norestart")
+                                @("/quiet", "/norestart". "/log", "`"$LogPath`"")
                             }
                         }
                         default { 
@@ -225,7 +225,7 @@ function Invoke-AppInstaller {
                                 "*.msi" {
                                     $ProcessExe = "msiexec.exe"
                                     $ArgList    = if ($MsiUninstall) { 
-                                        $MsiUninstall -join " "
+                                        ($MsiUninstall -join " ") -replace "{{LogPath}}", $LogPath
                                     } else {
                                         (@("/x", "`"$Path`"", "/qn", "/norestart", "/L*V", "`"$LogPath`"")) -join " "
                                     }
@@ -233,9 +233,9 @@ function Invoke-AppInstaller {
                                 "*.exe" {
                                     $ProcessExe = $Path
                                     $ArgList    = if ($ExeUninstall) { 
-                                        $ExeUninstall
+                                        ($ExeUninstall -join " ") -replace "{{LogPath}}", $LogPath -split " "
                                     } else {
-                                        @("/uninstall", "/quiet", "/norestart")
+                                        @("/uninstall", "/quiet", "/norestart", "/log", "`"$LogPath`"")
                                     }
                                 }
                                 default { 
