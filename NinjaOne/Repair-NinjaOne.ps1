@@ -81,62 +81,45 @@ $LogFile = Join-Path -Path $DirTemp -ChildPath 'Log_DeployNinja.log'
 $NinjaRMM = {
     param($Action, $TokenID)
     $Installer = Join-Path -Path $DirTemp -ChildPath 'NinjaOneAgent-x86.msi'
+    $RegKeyArch = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
+    
     [PSCustomObject]@{
-        Name       = 'NinjaRMM'
-        Action     = $Action
+        # Core Identification
+        Name    = 'NinjaRMMAgent'  # This matches the registry key!
+        Action  = $Action
+        Vendor  = 'NinjaRMM LLC'
+        
+        # App Installer Properties
         Path       = $Installer
         Service    = 'NinjaRMMAgent'
         URL        = 'https://app.ninjarmm.com/ws/api/v2/generic-installer/NinjaOneAgent-x86.msi'
+        
+        # MSI arguments without TokenID (will be added during install)
         MsiInstall = @(
-            "/i"
-            "`"$Installer`""
-            "TOKENID=$TokenID"
-            "/qn"
-            "/L*V"
-            "`"{{LogPath}}`"" 
+            "/i", "`"$Installer`"", "TOKENID={{TokenID}}", "/qn", "/L*V", "`"{{LogPath}}`""
         )
         MsiUninstall = @(
-            "/x"
-            "`"$Installer`""
-            "/qn"
-            "/norestart" 
-            "/L*V"
-            "`"{{LogPath}}`"" 
+            "/uninstall", "`"$Installer`"", "/norestart", "/L*V", "`"{{LogPath}}`"", 
             "WRAPPED_ARGUMENTS=`"--mode unattended`""
         )
-    }
-}
-
-#endregion ────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-#region ─────────────────────────────────────────── [ VAR.Cleanup ] ───────────────────────────────────────────────────
-
-if ($Action -eq "Cleanup") {
-    & {
-        # Define regkey paths based on system architecture
-        $RegKeyArch     = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
-        $RegKeySoftware = "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC\NinjaRMMAgent"
-        $RegKeyExeMsi   = "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed"
-
-        # Define Ninja installation directory
-        $DirNinjaData = Join-Path -Path $env:ProgramData -ChildPath "NinjaRMMAgent"
-
-        # Get Ninja directory via registry or fallback to service path
-        $DirNinja = & {
-            # [Primary] Registry path lookup
-            if ($DirNinjaReg = Get-ItemPropertyValue -Path $RegKeySoftware -Name Location | 
-                           Where-Object { Test-Path (Join-Path $_ "NinjaRMMAgent.exe") }) {
-                return $DirNinjaReg.Replace('/', '\')
-            }
-            # [Fallback] Service path lookup
-            $DirNinjaService = Get-CimInstance -ClassName Win32_Service -Filter 'Name LIKE "NinjaRMMAgent"' |
-                               Select-Object -First 1      
-            if ($DirNinjaService -and $DirNinjaService.PathName) {
-                $DirNinjaServicePath = ($DirNinjaService.PathName | Split-Path).Replace('"', '')
-                if (Test-Path (Join-Path $DirNinjaServicePath "NinjaRMMAgent.exe")) {
-                    return $DirNinjaServicePath.Replace('/', '\')
-                }
-            }
+        
+        # Directory Discovery
+        DiscoveryExeName = "NinjaRMMAgent.exe"
+        
+        # Cleanup Properties
+        CleanupServices    = @('NinjaRMMAgent', 'nmsmanager')
+        CleanupProcesses   = @('NinjaRMMProxyProcess64')
+        CleanupDirectories = @("$env:ProgramData\NinjaRMMAgent")
+        CleanupRegistryPaths = @(
+            "HKLM:\SOFTWARE\$RegKeyArch\Classes\Installer\Products",
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products',
+            "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed",
+            "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC",
+            "HKLM:\SOFTWARE\WOW6432Node\WOW6432Node\NinjaRMM LLC"
+        )
+        CleanupRegistryPatterns = @{
+            DisplayName = 'NinjaRMMAgent'
+            ProductName = 'NinjaRMMAgent'
         }
     }
 }
@@ -252,10 +235,11 @@ function Invoke-AppInstaller {
                     }
                 }
             }
+            
             Write-Log -Info "$ArgList"
             Write-Log -Info "Attempting to $Action $Name."
             $Process = Start-Process -FilePath $ProcessExe -ArgumentList $ArgList -Wait -NoNewWindow -PassThru
-
+            Start-Sleep -Seconds 10
             # Evaluate result
             if ($null -eq $Process.ExitCode) {
                 Write-Log -Warn "$Name $Action did not return an exit code, assuming success."
@@ -273,76 +257,178 @@ function Invoke-AppInstaller {
     }
 }
 
-function Clear-NinjaRMM {
-     if ($Cleanup) {
-        # Stop and remove services
-        $servicesToRemove = @("NinjaRMMAgent", "nmsmanager")
-        foreach ($ServiceName in $servicesToRemove) {
-            $Service = Get-Service -Name $ServiceName -EA SilentlyContinue
-            if ($Service) {
-                Stop-Service -InputObject $Service -Force
-                sc.exe DELETE $ServiceName
-            }
-        }
+function Remove-NinjaRMMCompletely {
+    Write-Log -Header "AGGRESSIVE NINJA CLEANUP"
+    
+    # Set registry paths based on architecture
+    if([system.environment]::Is64BitOperatingSystem){
+        $ninjaPreSoftKey = 'HKLM:\SOFTWARE\WOW6432Node\NinjaRMM LLC'
+        $uninstallKey = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+        $exetomsiKey = 'HKLM:\SOFTWARE\WOW6432Node\EXEMSI.COM\MSI Wrapper\Installed'
+    } else {
+        $ninjaPreSoftKey = 'HKLM:\SOFTWARE\NinjaRMM LLC'
+        $uninstallKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+        $exetomsiKey = 'HKLM:\SOFTWARE\EXEMSI.COM\MSI Wrapper\Installed'
+    }
 
-        # Stop Ninja Proxy Process
-        $ProxyProcess = Get-Process -Name "NinjaRMMProxyProcess64" -EA SilentlyContinue
-        if ($ProxyProcess) { Stop-Process -InputObject $ProxyProcess -Force }
+    $ninjaSoftKey = Join-Path $ninjaPreSoftKey -ChildPath 'NinjaRMMAgent'
+    $ninjaDataDir = Join-Path -Path $env:ProgramData -ChildPath "NinjaRMMAgent"
 
-        # Remove installation directories
-        $DirsToRemove = @($DirNinja, $DirNinjaData)
-        foreach ($Dir in $DirsToRemove) {
-            if (Test-Path $Dir) {
-                Remove-Item -Path $Dir -Recurse -Force -EA SilentlyContinue
-            }
-        }
+    # Discover Ninja directory dynamically
+    $ninjaDir = $null
+    $ninjaDirRegLocation = $(Get-ItemPropertyValue $ninjaSoftKey -Name Location -ErrorAction SilentlyContinue) 
+    if($ninjaDirRegLocation -and (Test-Path (Join-Path $ninjaDirRegLocation "NinjaRMMAgent.exe"))){
+        $ninjaDir = $ninjaDirRegLocation
+    }
 
-        # Remove registry keys
-        $RegistryKeys = @(
-            $RegKeyUninstall,
-            'HKLM:\SOFTWARE\Classes\Installer\Products',
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products',
-            $RegKeyExeMsi,
-            (Split-Path $RegKeySoftware),
-            "HKLM:\SOFTWARE\WOW6432Node\WOW6432Node\NinjaRMM LLC"
-            )
-        
-        foreach ($KeyPath in $RegistryKeys) {
-            if (Test-Path $KeyPath) {
-                # Remove matching child keys when applicable
-                Get-ChildItem -Path $KeyPath -EA SilentlyContinue | ForEach-Object {
-                    $KeyProps = Get-ItemProperty -Path $_.PSPath -EA SilentlyContinue
-                    if ($KeyProps.PSObject.Properties.Name -contains 'DisplayName') {
-                        if ($KeyProps.DisplayName -eq 'NinjaRMMAgent') { Remove-Item -LiteralPath $_.PSPath -Recurse -Force }
-                    } elseif ($KeyProps.PSObject.Properties.Name -contains 'ProductName') {
-                        if ($KeyProps.ProductName -eq 'NinjaRMMAgent') { Remove-Item -LiteralPath $_.PSPath -Recurse -Force }
-                    } else {
-                        Remove-Item -LiteralPath $_.PSPath -Recurse -Force
-                    }
-                }
+    if(!$ninjaDir){
+        $service = Get-CimInstance win32_service -Filter 'Name Like "NinjaRMMAgent"' -ErrorAction SilentlyContinue
+        if($service -and $service.PathName){
+            $ninjaDirService = ($service.PathName | Split-Path).Replace("`"", "")
+            if(Join-Path -Path $ninjaDirService -ChildPath "NinjaRMMAgentPatcher.exe" | Test-Path){
+                $ninjaDir = $ninjaDirService
             }
         }
     }
 
-    # Verify removal
-    $FailedChecks = @()
-
-    if (Test-Path (Split-Path $RegKeySoftware)) { $FailedChecks += "Failed to remove NinjaRMMAgent registry keys: $((Split-Path $RegKeySoftware))" }
-    if (Get-Service -Name "NinjaRMMAgent" -EA SilentlyContinue) { $FailedChecks += "Failed to remove NinjaRMMAgent service" }
-    if ($DirNinja -and (Test-Path $DirNinja)) {
-        $FailedChecks += "Failed to remove NinjaRMMAgent program folder: $DirNinja"
-        if (Test-Path (Join-Path $DirNinja "NinjaRMMAgent.exe")) { $FailedChecks += "Failed to remove NinjaRMMAgent.exe" }
-        if (Test-Path (Join-Path $DirNinja "NinjaRMMAgentPatcher.exe")) { $FailedChecks += "Failed to remove NinjaRMMAgentPatcher.exe" }
+    if($ninjaDir){
+        $ninjaDir = $ninjaDir.Replace('/','\')
+        Write-Log -Pass "Discovered Ninja directory: $ninjaDir"
     }
 
-    foreach ($Check in $FailedChecks) { Write-Host $Check -ForegroundColor Red }
+    Write-Log -Info "Starting aggressive cleanup..."
 
+    # Stop and remove services
+    $service = Get-Service "NinjaRMMAgent" -ErrorAction SilentlyContinue
+    if($service){
+        Write-Log -Info "Removing NinjaRMMAgent service"
+        Stop-Service $service -Force -ErrorAction SilentlyContinue
+        & sc.exe DELETE NinjaRMMAgent 2>$null
+        Write-Log -Pass "NinjaRMMAgent service removed"
+    }
+
+    $nmsservice = Get-Service "nmsmanager" -ErrorAction SilentlyContinue
+    if($nmsservice){
+        Write-Log -Info "Removing nmsmanager service"
+        Stop-Service $nmsservice -Force -ErrorAction SilentlyContinue
+        & sc.exe DELETE nmsmanager 2>$null
+        Write-Log -Pass "nmsmanager service removed"
+    }
+
+    # Stop processes
+    $proxyservice = Get-Process "NinjaRMMProxyProcess64" -ErrorAction SilentlyContinue
+    if($proxyservice){
+        Write-Log -Info "Stopping NinjaRMMProxyProcess64"
+        Stop-Process $proxyservice -Force -ErrorAction SilentlyContinue
+        Write-Log -Pass "NinjaRMMProxyProcess64 stopped"
+    }
+
+    # Remove directories
+    if($ninjaDir -and (Test-Path $ninjaDir)){
+        Write-Log -Info "Removing directory: $ninjaDir"
+        & cmd.exe /c "rd /s /q `"$ninjaDir`"" 2>$null
+        Write-Log -Pass "Directory removed: $ninjaDir"
+    }
+
+    if(Test-Path $ninjaDataDir){
+        Write-Log -Info "Removing data directory: $ninjaDataDir"
+        & cmd.exe /c "rd /s /q `"$ninjaDataDir`"" 2>$null
+        Write-Log -Pass "Data directory removed: $ninjaDataDir"
+    }
+
+    # Clean registry - just remove the main keys
+    $registryPaths = @(
+        $ninjaPreSoftKey,
+        "HKLM:\SOFTWARE\WOW6432Node\WOW6432Node\NinjaRMM LLC",
+        $ninjaSoftKey
+    )
+
+    foreach ($regPath in $registryPaths) {
+        if (Test-Path $regPath) {
+            Remove-Item -Path $regPath -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Log -Pass "Registry key removed: $regPath"
+        }
+    }
+
+    Write-Log -Pass "Aggressive cleanup completed"
+    Write-Log -HeaderEnd
 }
 
 #endregion ════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 
 #region ═══════════════════════════════════════ { FUNCTION.ANCILLARY } ════════════════════════════════════════════════
+
+function Get-ApplicationDirectory {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [PSCustomObject]$ApplicationObject
+    )
+
+    process {
+       # Extract properties from the application object
+        $AppName = $ApplicationObject.Name
+        $Vendor = $ApplicationObject.Vendor
+        $ServiceName = $ApplicationObject.Service
+        $ExeName = $ApplicationObject.DiscoveryExeName
+        $RegistryKeys = $ApplicationObject.AppDiscoveryRegistryKeys
+
+        # Use custom registry keys if provided, otherwise fall back to generic discovery
+        if (-not $RegistryKeys) {
+            $RegKeyArch = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
+            $RegistryKeys = @(
+                "HKLM:\SOFTWARE\$RegKeyArch\$Vendor\$AppName",
+                "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall\$AppName",
+                "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$AppName"
+            )
+            Write-Log -Info "Using generic registry discovery paths for $AppName"
+        } else {
+            Write-Log -Info "Using app-specific registry discovery paths for $AppName"
+        }
+
+        Write-Log -Info "Attempting to locate installation directory for $AppName"
+
+        foreach ($RegKey in $RegistryKeys) {
+            if (Test-Path $RegKey) {
+                Write-Log -Info "Checking registry path: $RegKey"
+                
+                $LocationProperties = @('InstallLocation', 'Location', 'InstallDir', 'Path', 'BaseDir')
+                
+                foreach ($Property in $LocationProperties) {
+                    try {
+                        $RegValue = Get-ItemPropertyValue -Path $RegKey -Name $Property -EA SilentlyContinue
+                        if ($RegValue -and (Test-Path (Join-Path $RegValue $ExeName))) {
+                            $CleanPath = $RegValue.Replace('/', '\').TrimEnd('\')
+                            Write-Log -Pass "Found directory via registry ($Property): $CleanPath"
+                            return $CleanPath
+                        }
+                    } catch {
+                        # Continue to next property
+                    }
+                }
+            }
+        }
+
+        if ($ServiceName) {
+            Write-Log -Info "Attempting service-based discovery: $ServiceName"
+            $Service = Get-CimInstance -ClassName Win32_Service -Filter "Name LIKE '$ServiceName%'" |
+                       Select-Object -First 1
+            if ($Service -and $Service.PathName) {
+                $ServicePath = $Service.PathName -replace '^"([^"]+)".*$', '$1'
+                $ServiceDir = Split-Path $ServicePath -Parent
+                if (Test-Path (Join-Path $ServiceDir $ExeName)) {
+                    $CleanPath = $ServiceDir.Replace('/', '\')
+                    Write-Log -Pass "Found directory via service: $CleanPath"
+                    return $CleanPath
+                }
+            }
+        }
+
+        Write-Log -Info "Unable to locate installation directory for $AppName"
+        return $null
+    }
+}
 
 function Get-File {
 
@@ -607,27 +693,47 @@ Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).T
 
 $DeployConfig = @{
     TokenID  = ''
-    Action   = @('Bootstrap', 'Uninstall', 'Install')
+    Action   = @('Initialize', 'Cleanup', 'Install')
     LogFile  = $LogFile
 }
 
 Write-Log -SystemInfo
 
+# Create the app config once
+$NinjaApp = & $NinjaRMM -Action 'Initialize'
+
 foreach ($Action in $DeployConfig.Action) {
     Write-Log -Header $Action.ToUpper()
     switch ($Action) {
-        'Bootstrap' {
+        'Initialize' {
             if (Test-Path $DirTemp) { Write-Log -Info "Temporary directory initialized." }
             else { Write-Log -Fail "Temporary directory initialization failed, terminating script." ; exit 1 }
             Write-Log -Info "Writing logs to $($DeployConfig.LogFile)"
-            $NinjaInstall = & $NinjaRMM -Action 'install' -TokenID $DeployConfig.TokenID
-            Get-File -URL $NinjaInstall.URL -Path $NinjaInstall.Path
+            Get-File -URL $NinjaApp.URL -Path $NinjaApp.Path
         }
         'Uninstall' {
-            & $NinjaRMM -Action 'uninstall' | Invoke-AppInstaller
+            $NinjaDir = $NinjaApp | Get-ApplicationDirectory
+            if ($ninjaDir -and (Test-Path (Join-Path $ninjaDir "NinjaRMMAgent.exe"))) {
+                Write-Log -Info "Disabling uninstall prevention."
+                try {
+                    Start-Process -FilePath (Join-Path $ninjaDir "NinjaRMMAgent.exe") -ArgumentList "-disableUninstallPrevention NOUI" -Wait -EA SilentlyContinue
+                    Write-Log -Pass "Uninstall prevention disabled."
+                    Start-Sleep -Seconds 2
+                } catch {
+                    Write-Log -Warn "Could not disable uninstall prevention: $($_.Exception.Message)"
+                }
+            }
+            $NinjaApp | Invoke-AppInstaller -Action 'uninstall'
+        }
+        'Cleanup' {
+            Remove-NinjaRMMCompletely
         }
         'Install' {
-            $NinjaInstall | Invoke-AppInstaller
+            # Modify the existing object for installation
+            $NinjaApp.MsiInstall = $NinjaApp.MsiInstall | ForEach-Object { 
+                $_ -replace "{{TokenID}}", $DeployConfig.TokenID 
+            }
+            $NinjaApp | Invoke-AppInstaller -Action 'install'
         }
     }
     Write-Log -HeaderEnd
