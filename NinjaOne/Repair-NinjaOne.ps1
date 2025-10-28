@@ -244,10 +244,10 @@ function Remove-ApplicationComponents {
 
         # Process services (REMOVED individual logging)
         foreach ($ServiceName in $CleanupServices) {
-            $Service = Get-Service -Name $ServiceName EA SilentlyContinue
+            $Service = Get-Service -Name $ServiceName -EA SilentlyContinue
             if ($Service) {
                 try {
-                    Stop-Service $Service -Force EA SilentlyContinue
+                    Stop-Service $Service -Force -EA SilentlyContinue
                     & sc.exe DELETE $ServiceName 2>$null
                     $ServicesResult.Removed += $ServiceName
                 } catch {
@@ -260,10 +260,10 @@ function Remove-ApplicationComponents {
 
         # Process processes (REMOVED individual logging)
         foreach ($ProcessName in $CleanupProcesses) {
-            $Process = Get-Process -Name $ProcessName EA SilentlyContinue
+            $Process = Get-Process -Name $ProcessName -EA SilentlyContinue
             if ($Process) {
                 try {
-                    Stop-Process $Process -Force EA SilentlyContinue
+                    Stop-Process $Process -Force -EA SilentlyContinue
                     $ProcessesResult.Removed += $ProcessName
                 } catch {
                     $ProcessesResult.Failed += $ProcessName
@@ -298,7 +298,7 @@ function Remove-ApplicationComponents {
     
             if (Test-Path $regPath) {
                 try {
-                    Remove-Item -Path $regPath -Recurse -Force EA SilentlyContinue
+                    Remove-Item -Path $regPath -Recurse -Force -EA SilentlyContinue
                     $RegistryResult.Removed += $regPath
                 } catch {
                     $RegistryResult.Failed += $regPath
@@ -319,11 +319,11 @@ function Remove-ApplicationComponents {
 
             $foundKeys = switch ($search.SearchType) {
                 'NamePattern' {
-                    Get-ChildItem $search.Path EA SilentlyContinue | 
+                    Get-ChildItem $search.Path -EA SilentlyContinue | 
                     Where-Object Name -CLike $search.Pattern
                 }
                 'PropertyValue' {
-                    Get-ChildItem $search.Path EA SilentlyContinue | 
+                    Get-ChildItem $search.Path -EA SilentlyContinue | 
                     Where-Object {
                         $checkPath = $_.PSPath
                         # SPECIAL CASE HANDLED HERE: If SubKey is specified, drill down into subfolder
@@ -332,14 +332,14 @@ function Remove-ApplicationComponents {
                         }
                         # Check if the path (or subpath) exists and property matches expected value
                         (Test-Path $checkPath) -and 
-                        ((Get-ItemProperty -Path $checkPath -Name $search.Property EA SilentlyContinue).$($search.Property) -eq $search.ExpectedValue)
+                        ((Get-ItemProperty -Path $checkPath -Name $search.Property -EA SilentlyContinue).$($search.Property) -eq $search.ExpectedValue)
                     }
                 }
             }
 
             foreach ($key in $foundKeys) {
                 try {
-                    Remove-Item -LiteralPath $key.PSPath -Recurse -Force EA SilentlyContinue
+                    Remove-Item -LiteralPath $key.PSPath -Recurse -Force -EA SilentlyContinue
                     $RegistryResult.Removed += "$($search.Path):$($key.PSChildName)"
                 } catch {
                     $RegistryResult.Failed += "$($search.Path):$($key.PSChildName)"
@@ -355,13 +355,13 @@ function Remove-ApplicationComponents {
         $orphanedRegPath = 'HKLM:\Software\Classes\Installer\Products'
         
         if (Test-Path $orphanedRegPath) {
-            $childKeys = Get-ChildItem $orphanedRegPath EA SilentlyContinue
+            $childKeys = Get-ChildItem $orphanedRegPath -EA SilentlyContinue
             foreach ($key in $childKeys) {
                 # Skip known Windows Common GUID
                 if ($key.Name -match '99E80CA9B0328e74791254777B1F42AE') { continue }
                 
                 try {
-                    $productName = Get-ItemPropertyValue -LiteralPath $key.PSPath -Name 'ProductName' EA Stop
+                    $productName = Get-ItemPropertyValue -LiteralPath $key.PSPath -Name 'ProductName' -EA Stop
                 } catch {
                     # Key exists but ProductName is missing - potential orphan
                     $RegistryResult.Orphaned += $key.PSPath
