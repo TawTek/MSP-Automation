@@ -63,7 +63,7 @@
     Developer: TawTek
     Created  : 2023-01-01
     Updated  : 2025-10-28
-    Version  : 10.5
+    Version  : 10.8
     
     [Reference]
     > https://ninjarmm.zendesk.com/hc/en-us/articles/36038775278349-Custom-Script-NinjaOne-Agent-Removal-Windows
@@ -112,33 +112,38 @@ $NinjaRMM = {
         
         # Cleanup Properties
         CleanupServices    = @('NinjaRMMAgent', 'nmsmanager')
-        CleanupProcesses   = @('NinjaRMMProxyProcess64')
+        CleanupProcesses   = @("NinjaRMMAgent", "NinjaRMMAgentPatcher", "njbar", "NinjaRMMProxyProcess64")
         CleanupDirectories = @("$env:ProgramData\NinjaRMMAgent")
         
         # Direct registry paths to remove (using RegKeyArch)
         DirectRegistryPaths = @(
-            "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC",
-            "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC\NinjaRMMAgent",
-            "HKLM:\SOFTWARE\WOW6432Node\WOW6432Node\NinjaRMM LLC" # Mistaken key
+            "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC"
         )
         
-        # Consolidated registry search patterns (using RegKeyArch)
+        # Registry cleanup targets - common installation registry locations
         RegistrySearchPatterns = @(
-            # Uninstall key search
+            # Application uninstall registry entry (Control Panel)
             @{
                 Path = "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall"
                 SearchType = 'PropertyValue'
                 Property = 'DisplayName'
                 ExpectedValue = 'NinjaRMMAgent'
             },
-            # Installer Products search  
+            # Windows Installer product registration (HKLM)
             @{
                 Path = "HKLM:\SOFTWARE\$RegKeyArch\Classes\Installer\Products"
                 SearchType = 'PropertyValue'
                 Property = 'ProductName'
                 ExpectedValue = 'NinjaRMMAgent'
             },
-            # Installer UserData search (with subkey) - this one doesn't use RegKeyArch
+            # Windows Installer product registration (HKEY_CLASSES_ROOT)
+            @{
+                Path = "HKEY_CLASSES_ROOT\Installer\Products"
+                SearchType = 'PropertyValue'
+                Property = 'ProductName'
+                ExpectedValue = 'NinjaRMMAgent'
+            },
+            # System-wide installed applications (LOCAL SYSTEM context)
             @{
                 Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products'
                 SearchType = 'PropertyValue'
@@ -146,11 +151,12 @@ $NinjaRMM = {
                 ExpectedValue = 'NinjaRMMAgent'
                 SubKey = 'InstallProperties'
             },
-            # EXE to MSI wrapper search (pattern-based)
+            # EXE to MSI wrapper installation tracking
             @{
                 Path = "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed"
-                SearchType = 'NamePattern'
-                Pattern = '*NinjaRMMAgent*'
+                SearchType = 'PropertyValue'
+                Property = 'DisplayName'
+                ExpectedValue = 'NinjaRMMAgent'
             }
         )
     }
@@ -336,6 +342,7 @@ function Remove-ApplicationComponents {
             NotFound = @()
             Failed = @()
             NoKeysFound = @()
+            Orphaned = @()
         }
 
         Write-Log -Info "Attempting to remove leftover services, processes, directories, and registry keys."
@@ -389,10 +396,12 @@ function Remove-ApplicationComponents {
             }
         }
 
-        # REGISTRY CLEANUP (REMOVED individual logging)
+        # REGISTRY CLEANUP
         # 1. Direct registry paths
         foreach ($regPath in $DirectRegistryPaths) {
-            if ($regPath -and (Test-Path $regPath)) {
+            if (-not $regPath) { continue }
+    
+            if (Test-Path $regPath) {
                 try {
                     Remove-Item -Path $regPath -Recurse -Force -ErrorAction SilentlyContinue
                     $RegistryResult.Removed += $regPath
@@ -404,62 +413,66 @@ function Remove-ApplicationComponents {
             }
         }
 
-        # 2. Consolidated registry search patterns
+        # 2. Registry search patterns
         foreach ($search in $RegistrySearchPatterns) {
-            if (-not $search.Path) {
-                continue
-            }
+            if (-not $search.Path) { continue }
 
             if (-not (Test-Path $search.Path)) {
                 $RegistryResult.NoKeysFound += $search.Path
                 continue
             }
-            
-            $foundCount = 0
-            switch ($search.SearchType) {
+
+            $foundKeys = switch ($search.SearchType) {
                 'NamePattern' {
-                    $foundKeys = Get-ChildItem $search.Path -ErrorAction SilentlyContinue | 
-                                Where-Object -Property Name -CLike $search.Pattern
-                    foreach ($key in $foundKeys) {
-                        try {
-                            Remove-Item -LiteralPath $key.PSPath -Recurse -Force -ErrorAction SilentlyContinue
-                            $RegistryResult.Removed += "$($search.Path):$($key.PSChildName)"
-                            $foundCount++
-                        } catch {
-                            $RegistryResult.Failed += "$($search.Path):$($key.PSChildName)"
-                        }
-                    }
+                    Get-ChildItem $search.Path -ErrorAction SilentlyContinue | 
+                    Where-Object Name -CLike $search.Pattern
                 }
                 'PropertyValue' {
-                    $childKeys = Get-ChildItem $search.Path -ErrorAction SilentlyContinue
-                    foreach ($key in $childKeys) {
-                        $checkPath = $key.PSPath
-                        if ($search.SubKey) {
-                            $checkPath = Join-Path $key.PSPath $search.SubKey
+                    Get-ChildItem $search.Path -ErrorAction SilentlyContinue | 
+                    Where-Object {
+                        $checkPath = $_.PSPath
+                        # SPECIAL CASE HANDLED HERE: If SubKey is specified, drill down into subfolder
+                        if ($search.SubKey) { 
+                            $checkPath = Join-Path $_.PSPath $search.SubKey 
                         }
-                        
-                        if (Test-Path $checkPath) {
-                            $propValue = (Get-ItemProperty -Path $checkPath -Name $search.Property -ErrorAction SilentlyContinue).$($search.Property)
-                            if ($propValue -eq $search.ExpectedValue) {
-                                try {
-                                    Remove-Item -LiteralPath $key.PSPath -Recurse -Force -ErrorAction SilentlyContinue
-                                    $RegistryResult.Removed += "$($search.Path):$($key.PSChildName)"
-                                    $foundCount++
-                                } catch {
-                                    $RegistryResult.Failed += "$($search.Path):$($key.PSChildName)"
-                                }
-                            }
-                        }
+                        # Check if the path (or subpath) exists and property matches expected value
+                        (Test-Path $checkPath) -and 
+                        ((Get-ItemProperty -Path $checkPath -Name $search.Property -ErrorAction SilentlyContinue).$($search.Property) -eq $search.ExpectedValue)
                     }
                 }
             }
-            
-            if ($foundCount -eq 0) {
+
+            foreach ($key in $foundKeys) {
+                try {
+                    Remove-Item -LiteralPath $key.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+                    $RegistryResult.Removed += "$($search.Path):$($key.PSChildName)"
+                } catch {
+                    $RegistryResult.Failed += "$($search.Path):$($key.PSChildName)"
+                }
+            }
+
+            if ($foundKeys.Count -eq 0) {
                 $RegistryResult.NoKeysFound += $search.Path
             }
         }
-
-
+        # 3. Check for orphaned registry keys with missing ProductName
+        Write-Log -Info "Checking for orphaned registry keys with missing ProductName..."
+        $orphanedRegPath = 'HKLM:\Software\Classes\Installer\Products'
+        
+        if (Test-Path $orphanedRegPath) {
+            $childKeys = Get-ChildItem $orphanedRegPath -ErrorAction SilentlyContinue
+            foreach ($key in $childKeys) {
+                # Skip known Windows Common GUID
+                if ($key.Name -match '99E80CA9B0328e74791254777B1F42AE') { continue }
+                
+                try {
+                    $productName = Get-ItemPropertyValue -LiteralPath $key.PSPath -Name 'ProductName' -ErrorAction Stop
+                } catch {
+                    # Key exists but ProductName is missing - potential orphan
+                    $RegistryResult.Orphaned += $key.PSPath
+                }
+            }
+        }
         # Services summary
         $properties = @('Removed', 'NotFound', 'Failed')
         $data = foreach ($property in $properties) {
@@ -497,7 +510,7 @@ function Remove-ApplicationComponents {
         }
 
         # Registry summary
-        $properties = @('Removed', 'NotFound', 'Failed', 'NoKeysFound')
+        $properties = @('Removed', 'NotFound', 'Failed', 'NoKeysFound', 'Orphaned')
         $data = foreach ($property in $properties) {
             foreach ($item in $RegistryResult.$property) {
                 [PSCustomObject]@{ Status = $property; Path = $item }
@@ -505,7 +518,25 @@ function Remove-ApplicationComponents {
         }
         if ($data) { 
             Write-Log -Info "Registry Status`n"
-            Write-Host (($data | Sort-Object Status -Descending | Format-Table -AutoSize | Out-String).Trim())
+            Write-Host (($data | Sort-Object Status -Descending | Format-Table -AutoSize | Out-String).Trim() + "`n")
+        }
+        if ($RegistryResult.Orphaned.Count -gt 0) {
+            Write-Log -Warn "Found orphaned registry keys with missing ProductName property"
+            Write-Log -Warn "These may be from corrupt Ninja installations and could prevent reinstallation`n$(
+                             $RegistryResult.Orphaned | ForEach-Object { "[RKEY] $_" } -join "`n" )"
+        }
+        # Final success message if no failures
+        $totalFailures = (
+            $ServicesResult.Failed.Count +
+            $ProcessesResult.Failed.Count + 
+            $DirectoriesResult.Failed.Count +
+            $RegistryResult.Failed.Count
+        )
+
+        if ($totalFailures -eq 0) {
+            Write-Log -Pass "All existing components successfully removed."
+        } else {
+            Write-Log -Warn "Some components could not be removed (see Failed items above)"
         }
     }
 }
