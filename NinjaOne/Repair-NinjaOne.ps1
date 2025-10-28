@@ -377,7 +377,7 @@ function Remove-ApplicationComponents {
         }
         if ($data) { 
             Write-Log -Info "Service Status`n"
-            Write-Host (($data | Sort-Object Status -Descending | Format-Table -AutoSize | Out-String).Trim() + "`n")
+            Write-Log -View (($data | Sort-Object Status -Descending | Format-Table -AutoSize | Out-String).Trim() + "`n")
         }
 
         # Processes summary  
@@ -389,7 +389,7 @@ function Remove-ApplicationComponents {
         }
         if ($data) { 
             Write-Log -Info "Process Status`n"
-            Write-Host (($data | Sort-Object Status -Descending | Format-Table -AutoSize | Out-String).Trim() + "`n")
+            Write-Log -View (($data | Sort-Object Status -Descending | Format-Table -AutoSize | Out-String).Trim() + "`n")
         }
 
         # Directories summary
@@ -401,7 +401,7 @@ function Remove-ApplicationComponents {
         }
         if ($data) { 
             Write-Log -Info "Directories Status`n"
-            Write-Host (($data | Sort-Object Status -Descending | Format-Table -AutoSize | Out-String).Trim() + "`n")
+            Write-Log -View (($data | Sort-Object Status -Descending | Format-Table -AutoSize | Out-String).Trim() + "`n")
         }
 
         # Registry summary
@@ -413,7 +413,7 @@ function Remove-ApplicationComponents {
         }
         if ($data) { 
             Write-Log -Info "Registry Status`n"
-            Write-Host (($data | Sort-Object Status -Descending | Format-Table -AutoSize | Out-String).Trim() + "`n")
+            Write-Log -View (($data | Sort-Object Status -Descending | Format-Table -AutoSize | Out-String).Trim() + "`n")
         }
         if ($RegistryResult.Orphaned.Count -gt 0) {
             Write-Log -Warn "Found orphaned registry keys with missing ProductName property"
@@ -666,6 +666,7 @@ function Write-Log {
         [Parameter(ParameterSetName = "Pass")][switch]$Pass,
         [Parameter(ParameterSetName = "Warn")][switch]$Warn,
         [Parameter(ParameterSetName = "Fail")][switch]$Fail,
+        [Parameter(ParameterSetName = "View")][switch]$View,
         [Parameter(ParameterSetName = "Header")][switch]$Header,
         [Parameter(ParameterSetName = "HeaderEnd")][switch]$HeaderEnd,
         [Parameter(ParameterSetName = "SystemInfo")][switch]$SystemInfo,
@@ -673,6 +674,7 @@ function Write-Log {
         [Parameter(Position = 0, ParameterSetName = "Pass")]
         [Parameter(Position = 0, ParameterSetName = "Warn")] 
         [Parameter(Position = 0, ParameterSetName = "Fail")]
+        [Parameter(Position = 0, ParameterSetName = "View")] 
         [Parameter(Position = 0, ParameterSetName = "Header")]
         [string]$Message,
         [string]$LogPath    = $LogFile,
@@ -726,6 +728,17 @@ Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).T
         $FullLine = $Decoration * ($HeaderWidth - 1)
         Write-Host $FullLine -ForegroundColor "DarkGray"
         $FullLine | Out-File -FilePath $LogPath -Append -Encoding UTF8
+        return
+    }
+
+    # Handle Display parameter to write to console and log file without prefix
+    if ($View) {
+        Write-Host $Message
+        try {
+            $Message | Out-File -FilePath $LogPath -Append -Encoding UTF8
+        } catch {
+            Write-Warning "Failed to write to log file: $($_.Exception.Message)"
+        }
         return
     }
 
