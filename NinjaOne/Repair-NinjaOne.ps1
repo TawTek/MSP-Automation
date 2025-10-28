@@ -3,67 +3,74 @@
     Deploys, removes, or cleans up NinjaRMM agent with comprehensive logging and error handling.
 
 .DESCRIPTION
-    ===EXECUTION WORKFLOW:===
+    ===EXECUTION WORKFLOW===
     
-    [PHASE - BOOTSTRAP]
-    1. Environment Preparation
+    [PHASE 1 - INITIALIZATION]
+    1. Environment Setup
        - Creates C:\Temp directory if missing
-       - Initializes logging system $LogFile
+       - Initializes logging system with timestamped entries
        - Captures system information (OS, memory, disk space, PowerShell version)
-       - Downloads installer
-       - Validates MSI file exists before proceeding
+    
+    2. Application Configuration
+       - Defines NinjaRMM deployment parameters
+       - Sets up architecture-aware registry paths (32/64-bit)
+       - Configures installer arguments and cleanup targets
 
-    [PHASE - UNINSTALLATION]
-    2. Agent Removal (GUID-based priority)
-       - Scans registry for existing NinjaRMM installation GUID
+    [PHASE 2 - RESOURCE ACQUISITION] 
+    3. Installer Download
+       - Downloads MSI from NinjaRMM CDN using multiple fallback methods
+       - Validates file existence before proceeding
+
+    [PHASE 3 - UNINSTALLATION (if defined)]
+    4. Agent Removal
+       - Scans registry for existing installation GUID
        - Uses msiexec /x with GUID for clean uninstall
        - Falls back to file-based uninstall if GUID not found
-       - Applies silent uninstall parameters (/qn, /norestart)
+       - Disables uninstall prevention before removal
 
-    [PHASE - INSTALLATION] 
-    3. Agent Deployment
-       - Executes msiexec /i with TOKENID parameter for authentication
-       - Uses silent installation mode (/qn) with verbose logging (/L*V)
-       - Monitors installation process and validates exit codes
-
-    [PHASE - CLEANUP]
-    4. Comprehensive Removal (when -Cleanup specified)
-       - Stops and removes NinjaRMMAgent and nmsmanager services
-       - Terminates NinjaRMMProxyProcess64 if running
+    [PHASE 4 - CLEANUP (if defined)]
+    5. Component Removal
+       - Stops and removes NinjaRMM services
+       - Terminates related processes
        - Deletes installation directories and program data
-       - Removes registry entries across multiple hives
-       - Verifies complete removal of all components
+       - Removes registry entries across multiple locations:
+         * Vendor registry keys
+         * Uninstall entries
+         * Windows Installer product registration
+         * EXE to MSI wrapper tracking
+       - Detects and reports orphaned registry keys
+
+    [PHASE 5 - INSTALLATION (if defined)]
+    6. Agent Deployment
+       - Executes msiexec /i with TOKENID parameter
+       - Uses silent installation with verbose logging
+       - Monitors installation process and validates exit codes
 
     ===ARCHITECTURE===
     - Pipeline-enabled design using ValueFromPipelineByPropertyName
     - Dynamic log path generation (Log_AppName-Action.log)  
-    - Multi-method download system with automatic fallback
+    - Multi-method download system (WebRequest, BITS, WebClient, UNC)
     - 32/64-bit architecture detection for registry operations
-    - MSI/EXE installer support with extensible framework
+    - Modular function design for reusability
 
     ===ERROR HANDLING===
     - Comprehensive try/catch blocks throughout execution
     - Exit code validation with specific failure messages
     - Multiple uninstall methods for reliable removal
     - Download retry logic with method fallback
+    - Graceful degradation when components not found
 
 .PARAMETER Action
-    Required. Specifies deployment action: 'install' or 'uninstall'
+    Required. Specifies deployment action: 'Initialize', 'Uninstall', 'Cleanup', or 'Install'
 
 .PARAMETER TokenID  
-    Required for installation. Authentication token provided by NinjaRMM platform.
-
-.PARAMETER Cleanup
-    Optional switch. Performs deep cleanup of all NinjaRMM components including registry.
-
-.LINK
-    https://ninjarmm.zendesk.com/hc/en-us/articles/36038775278349-Custom-Script-NinjaOne-Agent-Removal-Windows
+    Required for installation. Site TokenID is found in the NinjaRMM platform.
 
 .NOTES
     Developer: TawTek
     Created  : 2023-01-01
     Updated  : 2025-10-28
-    Version  : 10.8
+    Version  : 10.9
     
     [Reference]
     > https://ninjarmm.zendesk.com/hc/en-us/articles/36038775278349-Custom-Script-NinjaOne-Agent-Removal-Windows
