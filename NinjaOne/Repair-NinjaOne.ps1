@@ -73,100 +73,6 @@
         * Comprehensive logging, parameterization, edge case error handling
 #>
 
-#region ═════════════════════════════════════════ { VARIABLE.GLOBAL } ═════════════════════════════════════════════════
-
-$DirTemp = 'C:\Temp'; if (-not (Test-Path $DirTemp)) { New-Item -Path $DirTemp -ItemType Directory -Force | Out-Null }
-$LogFile = Join-Path -Path $DirTemp -ChildPath 'Log_DeployNinja.log'
-
-#region ───────────────────────────────────────────── [ VAR.App ] ─────────────────────────────────────────────────────
-
-$NinjaRMM = {
-    param($Action, $TokenID)
-    $Installer = Join-Path -Path $DirTemp -ChildPath 'NinjaOneAgent-x86.msi'
-    
-    # Use RegKeyArch for consistent architecture handling
-    $RegKeyArch = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
-
-    [PSCustomObject]@{
-        # Core Identification
-        Name    = 'NinjaRMMAgent'
-        Action  = $Action
-        Vendor  = 'NinjaRMM LLC'
-        
-        # App Installer Properties
-        Path       = $Installer
-        Service    = 'NinjaRMMAgent'
-        URL        = 'https://app.ninjarmm.com/ws/api/v2/generic-installer/NinjaOneAgent-x86.msi'
-        
-        # MSI arguments
-        MsiInstall = @(
-            "/i", "`"$Installer`"", "TOKENID=`"{{TokenID}}`"", "/qn", "/L*V", "`"{{LogPath}}`""
-        )
-        MsiUninstall = @(
-            "/uninstall", "`"$Installer`"", "/quiet", "/norestart", "/L*V", "`"{{LogPath}}`"", 
-            "WRAPPED_ARGUMENTS=`"--mode unattended`""
-        )
-        
-        # Directory Discovery
-        DiscoveryExeName = "NinjaRMMAgent.exe"
-        
-        # Cleanup Properties
-        CleanupServices    = @('NinjaRMMAgent', 'nmsmanager')
-        CleanupProcesses   = @("NinjaRMMAgent", "NinjaRMMAgentPatcher", "njbar", "NinjaRMMProxyProcess64")
-        CleanupDirectories = @("$env:ProgramData\NinjaRMMAgent")
-        
-        # Direct registry paths to remove (using RegKeyArch)
-        DirectRegistryPaths = @(
-            "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC"
-        )
-        
-        # Registry cleanup targets - common installation registry locations
-        RegistrySearchPatterns = @(
-            # Application uninstall registry entry (Control Panel)
-            @{
-                Path = "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall"
-                SearchType = 'PropertyValue'
-                Property = 'DisplayName'
-                ExpectedValue = 'NinjaRMMAgent'
-            },
-            # Windows Installer product registration (HKLM)
-            @{
-                Path = "HKLM:\SOFTWARE\$RegKeyArch\Classes\Installer\Products"
-                SearchType = 'PropertyValue'
-                Property = 'ProductName'
-                ExpectedValue = 'NinjaRMMAgent'
-            },
-            # Windows Installer product registration (HKEY_CLASSES_ROOT)
-            @{
-                Path = "HKEY_CLASSES_ROOT\Installer\Products"
-                SearchType = 'PropertyValue'
-                Property = 'ProductName'
-                ExpectedValue = 'NinjaRMMAgent'
-            },
-            # System-wide installed applications (LOCAL SYSTEM context)
-            @{
-                Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products'
-                SearchType = 'PropertyValue'
-                Property = 'DisplayName'
-                ExpectedValue = 'NinjaRMMAgent'
-                SubKey = 'InstallProperties'
-            },
-            # EXE to MSI wrapper installation tracking
-            @{
-                Path = "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed"
-                SearchType = 'PropertyValue'
-                Property = 'DisplayName'
-                ExpectedValue = 'NinjaRMMAgent'
-            }
-        )
-    }
-}
-
-#endregion ────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-#endregion ════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-
 #region ══════════════════════════════════════════ { FUNCTION.MAIN } ══════════════════════════════════════════════════
 
 function Invoke-AppInstaller {
@@ -298,61 +204,50 @@ function Invoke-AppInstaller {
 function Remove-ApplicationComponents {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
-        [string]$Name,
-
-        [Parameter(ValueFromPipelineByPropertyName)]
-        [string[]]$CleanupServices = @(),
-
-        [Parameter(ValueFromPipelineByPropertyName)]
-        [string[]]$CleanupProcesses = @(),
-
-        [Parameter(ValueFromPipelineByPropertyName)]
-        [string[]]$CleanupDirectories = @(),
-
-        [Parameter(ValueFromPipelineByPropertyName)]
-        [string[]]$DirectRegistryPaths = @(),
-
-        [Parameter(ValueFromPipelineByPropertyName)]
-        [array]$RegistrySearchPatterns = @()
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)][string]$Name,
+        [Parameter(ValueFromPipelineByPropertyName)][string[]]$CleanupServices    = @(),
+        [Parameter(ValueFromPipelineByPropertyName)][string[]]$CleanupProcesses   = @(),
+        [Parameter(ValueFromPipelineByPropertyName)][string[]]$CleanupDirectories = @(),
+        [Parameter(ValueFromPipelineByPropertyName)][string[]]$RegPathExact       = @(),
+        [Parameter(ValueFromPipelineByPropertyName)][array]$RegSearch             = @()
     )
 
     process {
-        # Create result objects for each component type
+          # Create result objects for each component type
         $ServicesResult = [PSCustomObject]@{
-            Removed = @()
+            Removed  = @()
             NotFound = @()
-            Failed = @()
+            Failed   = @()
         }
 
         $ProcessesResult = [PSCustomObject]@{
-            Removed = @()
+            Removed  = @()
             NotFound = @()
-            Failed = @()
+            Failed   = @()
         }
 
         $DirectoriesResult = [PSCustomObject]@{
-            Removed = @()
+            Removed  = @()
             NotFound = @()
-            Failed = @()
+            Failed   = @()
         }
 
         $RegistryResult = [PSCustomObject]@{
-            Removed = @()
-            NotFound = @()
-            Failed = @()
+            Removed     = @()
+            NotFound    = @()
+            Failed      = @()
             NoKeysFound = @()
-            Orphaned = @()
+            Orphaned    = @()
         }
 
         Write-Log -Info "Attempting to remove leftover services, processes, directories, and registry keys."
 
         # Process services (REMOVED individual logging)
         foreach ($ServiceName in $CleanupServices) {
-            $Service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+            $Service = Get-Service -Name $ServiceName EA SilentlyContinue
             if ($Service) {
                 try {
-                    Stop-Service $Service -Force -ErrorAction SilentlyContinue
+                    Stop-Service $Service -Force EA SilentlyContinue
                     & sc.exe DELETE $ServiceName 2>$null
                     $ServicesResult.Removed += $ServiceName
                 } catch {
@@ -365,10 +260,10 @@ function Remove-ApplicationComponents {
 
         # Process processes (REMOVED individual logging)
         foreach ($ProcessName in $CleanupProcesses) {
-            $Process = Get-Process -Name $ProcessName -ErrorAction SilentlyContinue
+            $Process = Get-Process -Name $ProcessName EA SilentlyContinue
             if ($Process) {
                 try {
-                    Stop-Process $Process -Force -ErrorAction SilentlyContinue
+                    Stop-Process $Process -Force EA SilentlyContinue
                     $ProcessesResult.Removed += $ProcessName
                 } catch {
                     $ProcessesResult.Failed += $ProcessName
@@ -398,12 +293,12 @@ function Remove-ApplicationComponents {
 
         # REGISTRY CLEANUP
         # 1. Direct registry paths
-        foreach ($regPath in $DirectRegistryPaths) {
+        foreach ($regPath in $RegPathExact) {
             if (-not $regPath) { continue }
     
             if (Test-Path $regPath) {
                 try {
-                    Remove-Item -Path $regPath -Recurse -Force -ErrorAction SilentlyContinue
+                    Remove-Item -Path $regPath -Recurse -Force EA SilentlyContinue
                     $RegistryResult.Removed += $regPath
                 } catch {
                     $RegistryResult.Failed += $regPath
@@ -414,7 +309,7 @@ function Remove-ApplicationComponents {
         }
 
         # 2. Registry search patterns
-        foreach ($search in $RegistrySearchPatterns) {
+        foreach ($search in $RegSearch) {
             if (-not $search.Path) { continue }
 
             if (-not (Test-Path $search.Path)) {
@@ -424,11 +319,11 @@ function Remove-ApplicationComponents {
 
             $foundKeys = switch ($search.SearchType) {
                 'NamePattern' {
-                    Get-ChildItem $search.Path -ErrorAction SilentlyContinue | 
+                    Get-ChildItem $search.Path EA SilentlyContinue | 
                     Where-Object Name -CLike $search.Pattern
                 }
                 'PropertyValue' {
-                    Get-ChildItem $search.Path -ErrorAction SilentlyContinue | 
+                    Get-ChildItem $search.Path EA SilentlyContinue | 
                     Where-Object {
                         $checkPath = $_.PSPath
                         # SPECIAL CASE HANDLED HERE: If SubKey is specified, drill down into subfolder
@@ -437,14 +332,14 @@ function Remove-ApplicationComponents {
                         }
                         # Check if the path (or subpath) exists and property matches expected value
                         (Test-Path $checkPath) -and 
-                        ((Get-ItemProperty -Path $checkPath -Name $search.Property -ErrorAction SilentlyContinue).$($search.Property) -eq $search.ExpectedValue)
+                        ((Get-ItemProperty -Path $checkPath -Name $search.Property EA SilentlyContinue).$($search.Property) -eq $search.ExpectedValue)
                     }
                 }
             }
 
             foreach ($key in $foundKeys) {
                 try {
-                    Remove-Item -LiteralPath $key.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+                    Remove-Item -LiteralPath $key.PSPath -Recurse -Force EA SilentlyContinue
                     $RegistryResult.Removed += "$($search.Path):$($key.PSChildName)"
                 } catch {
                     $RegistryResult.Failed += "$($search.Path):$($key.PSChildName)"
@@ -460,13 +355,13 @@ function Remove-ApplicationComponents {
         $orphanedRegPath = 'HKLM:\Software\Classes\Installer\Products'
         
         if (Test-Path $orphanedRegPath) {
-            $childKeys = Get-ChildItem $orphanedRegPath -ErrorAction SilentlyContinue
+            $childKeys = Get-ChildItem $orphanedRegPath EA SilentlyContinue
             foreach ($key in $childKeys) {
                 # Skip known Windows Common GUID
                 if ($key.Name -match '99E80CA9B0328e74791254777B1F42AE') { continue }
                 
                 try {
-                    $productName = Get-ItemPropertyValue -LiteralPath $key.PSPath -Name 'ProductName' -ErrorAction Stop
+                    $productName = Get-ItemPropertyValue -LiteralPath $key.PSPath -Name 'ProductName' EA Stop
                 } catch {
                     # Key exists but ProductName is missing - potential orphan
                     $RegistryResult.Orphaned += $key.PSPath
@@ -554,12 +449,12 @@ function Get-ApplicationDirectory {
     )
 
     process {
-        # Use DirectRegistryPaths from the object for discovery
-        if ($ApplicationObject.DirectRegistryPaths) {
-            $RegistryKeys = $ApplicationObject.DirectRegistryPaths
-            Write-Log -Info "Querying installation directory using DirectRegistryPaths for $($ApplicationObject.Name)."
+        # Use RegPathExact from the object for discovery
+        if ($ApplicationObject.RegPathExact) {
+            $RegistryKeys = $ApplicationObject.RegPathExact
+            Write-Log -Info "Querying installation directory using RegPathExact for $($ApplicationObject.Name)."
         } else {
-            # Fallback to generic discovery if DirectRegistryPaths doesn't exist
+            # Fallback to generic discovery if RegPathExact doesn't exist
             $RegKeyArch = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
             $RegistryKeys = @(
                 "HKLM:\SOFTWARE\$RegKeyArch\$($ApplicationObject.Vendor)\$($ApplicationObject.Name)",
@@ -580,13 +475,10 @@ function Get-ApplicationDirectory {
                         $RegValue = Get-ItemPropertyValue -Path $RegKey -Name $Property -EA SilentlyContinue
                         if ($RegValue -and (Test-Path (Join-Path $RegValue $ApplicationObject.DiscoveryExeName))) {
                             $CleanPath = $RegValue.Replace('/', '\').TrimEnd('\')
-                            Write-Log -Pass "Found directory via registry ($Property)."
-                            Write-Log -Pass "$CleanPath"
+                            Write-Log -Pass "Found directory via registry ($Property): $CleanPath"
                             return $CleanPath
                         }
-                    } catch {
-                        # Continue to next property
-                    }
+                    } catch {}
                 }
             }
         }
@@ -872,37 +764,129 @@ Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).T
 #endregion ════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 
-#region ════════════════════════════════════════ { SCRIPT.EXECUTION } ═════════════════════════════════════════════════
+#region ═════════════════════════════════════════ { VARIABLE.GLOBAL } ═════════════════════════════════════════════════
 
-$DeployConfig = @{
-    Name     = 'NinjaRMM'
-    TokenID  = ''
-    Action   = @('Initialize', 'Uninstall', 'Cleanup', 'Install')
-    LogFile  = $LogFile
+$DirTemp = 'C:\Temp'
+$LogFile = Join-Path -Path $DirTemp -ChildPath 'Log_DeployNinja.log'
+
+# Configuration for application deployment
+$Config  = @{
+    Action  = @('Initialize', 'Uninstall', 'Cleanup', 'Install')
+    Name    = 'NinjaRMM'
+    TokenID = ''
 }
+
+#region ───────────────────────────────────────────── [ VAR.App ] ─────────────────────────────────────────────────────
+
+$NinjaRMM = {
+    param($Action)
+
+    $Installer  = Join-Path -Path $DirTemp -ChildPath 'NinjaOneAgent-x86.msi'
+    $RegKeyArch = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
+
+    [PSCustomObject]@{
+        # App Properties
+        Name   = 'NinjaRMMAgent'
+        Action = $Action
+        Vendor = 'NinjaRMM LLC'
+        
+        # Installer Properties
+        Path    = $Installer
+        Service = 'NinjaRMMAgent'
+        URL     = 'https://app.ninjarmm.com/ws/api/v2/generic-installer/NinjaOneAgent-x86.msi'
+        
+        # Installer Arguments
+        MsiInstall = @(
+            "/i", "`"$Installer`"", "TOKENID=$($Config.TokenID)", "/qn", "/L*V", "`"{{LogPath}}`""
+        )
+        MsiUninstall = @(
+            "/uninstall", "`"$Installer`"", "/quiet", "/norestart", "/L*V", "`"{{LogPath}}`""
+            "WRAPPED_ARGUMENTS=`"--mode unattended`""
+        )
+        
+        # Directory Discovery
+        DiscoveryExeName = "NinjaRMMAgent.exe"
+       
+        # Cleanup Properties
+        CleanupServices    = @('NinjaRMMAgent', 'nmsmanager')
+        CleanupProcesses   = @("NinjaRMMAgent", "NinjaRMMAgentPatcher", "njbar", "NinjaRMMProxyProcess64")
+        CleanupDirectories = @("$env:ProgramData\NinjaRMMAgent")
+        
+        # Direct registry paths to remove
+        RegPathExact = @("HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC")
+        
+        # Registry cleanup targets - common installation registry locations
+        RegSearch = @(
+            @{ # Control Panel uninstall registry entry
+                Path          = "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall"
+                SearchType    = 'PropertyValue'
+                Property      = 'DisplayName'
+                ExpectedValue = 'NinjaRMMAgent'
+            },
+            @{ # Windows Installer product registration (HKLM)
+                Path          = "HKLM:\SOFTWARE\$RegKeyArch\Classes\Installer\Products"
+                SearchType    = 'PropertyValue'
+                Property      = 'ProductName'
+                ExpectedValue = 'NinjaRMMAgent'
+            },
+            @{ # Windows Installer product registration (HKEY_CLASSES_ROOT)
+                Path          = "HKEY_CLASSES_ROOT\Installer\Products"
+                SearchType    = 'PropertyValue'
+                Property      = 'ProductName'
+                ExpectedValue = 'NinjaRMMAgent'
+            },
+            @{ # System-wide installed applications (LOCAL SYSTEM context)
+                Path          = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products'
+                SearchType    = 'PropertyValue'
+                Property      = 'DisplayName'
+                ExpectedValue = 'NinjaRMMAgent'
+                SubKey        = 'InstallProperties'
+            },
+            @{ # EXE to MSI wrapper installation tracking
+                Path          = "HKLM:\SOFTWARE\$RegKeyArch\EXEMSI.COM\MSI Wrapper\Installed"
+                SearchType    = 'PropertyValue'
+                Property      = 'DisplayName'
+                ExpectedValue = 'NinjaRMMAgent'
+            }
+        )
+    }
+}
+
+#endregion ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+#endregion ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+
+#region ════════════════════════════════════════ { SCRIPT.EXECUTION } ═════════════════════════════════════════════════
 
 Write-Log -SystemInfo
 
-foreach ($Action in $DeployConfig.Action) {
+foreach ($Action in $Config.Action) {
     Write-Log -Header $Action.ToUpper()
     switch ($Action) {
         'Initialize' {
-            if (Test-Path $DirTemp) { Write-Log -Pass "Temporary directory initialized." }
-            else { Write-Log -Fail "Temporary directory initialization failed, terminating script." ; exit 1 }
-            Write-Log -Info "Writing logs to $($DeployConfig.LogFile)"
-            # Create the app config once
-            try { $NinjaApp = & $NinjaRMM -Action 'Initialize' ; Write-Log -Pass "$($DeployConfig.Name) PSCustomObject initialized." } catch { Write-Log -Fail "Could not initilize object, terminating script." ; exit 1 }
-            # If Cleanup is in the actions, discover and add the program folder
-            if ('Cleanup' -in $DeployConfig.Action) {
+            Write-Log -Info "Initializing temporary directory." ; Set-Dir -Path $DirTemp -Create
+            Write-Log -Info "Writing logs to $LogFile"
+            # Initialize app object
+            try {
+                $NinjaApp = & $NinjaRMM -Action 'Initialize'
+                Write-Log -Pass "$($Config.Name) PSCustomObject initialized."
+            } catch {
+                Write-Log -Fail "Could not initilize object, terminating script."
+                exit 1
+            }
+            # If 'Cleanup' action is defined, discover program folder dynamically and add to CleanupDirectories
+            if ('Cleanup' -in $Config.Action) {
                 $DiscoveredDir = $NinjaApp | Get-ApplicationDirectory
                 if ($DiscoveredDir -and ($DiscoveredDir -notin $NinjaApp.CleanupDirectories)) {
                     $NinjaApp.CleanupDirectories += $DiscoveredDir
                 }
             }
-            Write-Log -Info "Downloading $($DeployConfig.Name) installer."
+            Write-Log -Info "Downloading $($Config.Name) installer."
             Get-File -URL $NinjaApp.URL -Path $NinjaApp.Path
         }
         'Uninstall' {
+            # Disable uninstall prevention if program folder is discovered
             if ($DiscoveredDir -and (Test-Path (Join-Path $DiscoveredDir "NinjaRMMAgent.exe"))) {
                 Write-Log -Info "Disabling uninstall prevention."
                 try {
@@ -919,10 +903,6 @@ foreach ($Action in $DeployConfig.Action) {
             $NinjaApp | Remove-ApplicationComponents
         }
         'Install' {
-            # Modify the existing object for installation
-            $NinjaApp.MsiInstall = $NinjaApp.MsiInstall | ForEach-Object { 
-                $_ -replace "{{TokenID}}", $DeployConfig.TokenID 
-            }
             $NinjaApp | Invoke-AppInstaller -Action 'install'
         }
     }
