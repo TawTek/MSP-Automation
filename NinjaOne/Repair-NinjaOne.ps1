@@ -69,8 +69,8 @@
 .NOTES
     Developer: TawTek
     Created  : 2023-01-01
-    Updated  : 2025-10-31
-    Version  : 11.0
+    Updated  : 2025-11-01
+    Version  : 11.5
 
     [Reference]
     > https://ninjarmm.zendesk.com/hc/en-us/articles/36038775278349-Custom-Script-NinjaOne-Agent-Removal-Windows
@@ -425,13 +425,14 @@ function Remove-ApplicationComponents {
             $ServicesResult.Failed.Count +
             $ProcessesResult.Failed.Count +
             $DirectoriesResult.Failed.Count +
-            $RegistryResult.Failed.Count
+            $RegistryResult.Failed.Count +
+            $RegistryResult.Orphaned.Count
         )
 
         if ($totalFailures -eq 0) {
             Write-Log -Pass "All existing components successfully removed."
         } else {
-            Write-Log -Warn "Some components could not be removed (see Failed items above)"
+            Write-Log -Warn "Some components could not be removed (see above)."
             if (Test-Path $Directory) { Write-Log -Warn "Folder removal error: $($Result -join '; ')" }
         }
     }
@@ -445,38 +446,33 @@ function Remove-ApplicationComponents {
 function Get-ApplicationDirectory {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory,ValueFromPipeline)][PSCustomObject]$ApplicationObject
+        [Parameter(Mandatory,ValueFromPipeline)][PSCustomObject]$AppObject
     )
 
     process {
-        # Use DirectRegistryPaths from the object for discovery
-        if ($ApplicationObject.DirectRegistryPaths) {
-            $RegistryKeys = $ApplicationObject.DirectRegistryPaths
-            Write-Log -Info "Querying installation directory using DirectRegistryPaths for $($ApplicationObject.Name)."
+        # Use RegPathExact from the object for discovery
+        if ($AppObject.RegPathExact) {
+            $RegistryKeys = $AppObject.RegPathExact
         } else {
-            # Fallback to generic discovery if DirectRegistryPaths doesn't exist
+            # Fallback to generic discovery if RegPathExact doesn't exist
             $RegKeyArch = if ([System.Environment]::Is64BitOperatingSystem) { 'WOW6432Node' } else { '' }
             $RegistryKeys = @(
-                "HKLM:\SOFTWARE\$RegKeyArch\$($ApplicationObject.Vendor)\$($ApplicationObject.Name)",
-                "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall\$($ApplicationObject.Name)",
-                "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($ApplicationObject.Name)"
+                "HKLM:\SOFTWARE\$RegKeyArch\$($AppObject.Vendor)\$($AppObject.Name)",
+                "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall\$($AppObject.Name)"
             )
-            Write-Log -Info "Querying installation direcotry using generic registry paths for $($ApplicationObject.Name)."
         }
 
         foreach ($RegKey in $RegistryKeys) {
             if (Test-Path $RegKey) {
-                Write-Log -Info "Checking: $RegKey"
 
                 $LocationProperties = @('InstallLocation', 'Location', 'InstallDir', 'Path', 'BaseDir')
 
                 foreach ($Property in $LocationProperties) {
                     try {
                         $RegValue = Get-ItemPropertyValue -Path $RegKey -Name $Property -EA SilentlyContinue
-                        if ($RegValue -and (Test-Path (Join-Path $RegValue $ApplicationObject.DiscoveryExeName))) {
+                        if ($RegValue -and (Test-Path (Join-Path $RegValue $AppObject.AgentExe))) {
                             $CleanPath = $RegValue.Replace('/', '\').TrimEnd('\')
                             Write-Log -Pass "Found directory via registry ($Property)."
-                            Write-Log -Pass "Path: $CleanPath"
                             return $CleanPath
                         }
                     } catch {}
@@ -485,22 +481,20 @@ function Get-ApplicationDirectory {
         }
 
         # Service-based discovery
-        if ($ApplicationObject.Service) {
-            Write-Log -Info "Attempting service-based discovery: $($ApplicationObject.Service)"
-            $Service = Get-CimInstance -ClassName Win32_Service -Filter "Name LIKE '$($ApplicationObject.Service)%'" |
+        if ($AppObject.Service) {
+            $Service = Get-CimInstance -ClassName Win32_Service -Filter "Name LIKE '$($AppObject.Service)%'" |
                        Select-Object -First 1
             if ($Service -and $Service.PathName) {
                 $ServicePath = $Service.PathName -replace '^"([^"]+)".*$', '$1'
                 $ServiceDir = Split-Path $ServicePath -Parent
-                if (Test-Path (Join-Path $ServiceDir $ApplicationObject.DiscoveryExeName)) {
+                if (Test-Path (Join-Path $ServiceDir $AppObject.AgentExe)) {
                     $CleanPath = $ServiceDir.Replace('/', '\')
                     Write-Log -Pass "Found directory via service."
-                    Write-Log -Pass "Path: $CleanPath"
                     return $CleanPath
                 }
             }
         }
-        Write-Log -Info "Unable to locate directory for $($ApplicationObject.Name)"
+        Write-Log -Info "Unable to locate directory for $($AppObject.Name)"
         return $null
     }
 }
@@ -659,6 +653,27 @@ function Set-Dir {
     }
 }
 
+function Test-ServicePath {
+    param([PSCustomObject]$AppObject)
+    
+    try {
+        $ActualPath = (
+            & sc.exe qc $($AppObject.Service) | 
+            Select-String 'BINARY_PATH_NAME\s+:\s+(.+)'
+        ).Matches.Groups[1].Value.Trim('"')
+        
+        if ($AppObject.SvcExe -eq $ActualPath) {
+            Write-Log -Pass "Service path successfully validated."
+        } else {
+            Write-Log -Warn "Service path mismatch."
+            Write-Log -Warn "Expected: $($AppObject.SvcExe)"
+            Write-Log -Warn "Found: $ActualPath"
+        }
+    } catch {
+        Write-Log -Warn "Service path validation failed: $($_.Exception.Message)"
+    }
+}
+
 function Write-Log {
     [CmdletBinding()]
     param(
@@ -784,7 +799,7 @@ $LogFile = Join-Path -Path $DirTemp -ChildPath 'Log_DeployNinja.log'
 
 # Configuration for application deployment
 $Config  = @{
-    Action  = @('Initialize', 'Uninstall', 'Cleanup', 'Install')
+    Action  = @('Initialize', 'Uninstall', 'Cleanup', 'Install', 'Validate')
     Name    = 'NinjaRMM'
     TokenID = ''
 }
@@ -810,7 +825,7 @@ $NinjaRMM = {
 
         # Installer Arguments
         MsiInstall = @(
-            "/i", "`"$Installer`"", "TOKENID=$($Config.TokenID)", "/qn", "/L*V", "`"{{LogPath}}`""
+            "/i", "`"$Installer`"", "TOKENID=`"$($Config.TokenID)`"", "/qn", "/L*V", "`"{{LogPath}}`""
         )
         MsiUninstall = @(
             "/uninstall", "`"$Installer`"", "/quiet", "/norestart", "/L*V", "`"{{LogPath}}`""
@@ -818,7 +833,8 @@ $NinjaRMM = {
         )
 
         # Directory Discovery
-        DiscoveryExeName = "NinjaRMMAgent.exe"
+        AgentExe = "NinjaRMMAgent.exe" # For finding installation directory
+        SvcExe   = "NinjaRMMAgentPatcher.exe" # For service path validation
 
         # Cleanup Properties
         CleanupServices    = @('NinjaRMMAgent', 'nmsmanager')
@@ -876,7 +892,7 @@ foreach ($Action in $Config.Action) {
     switch ($Action) {
         'Initialize' {
             Write-Log -Info "Initializing temporary directory." ; Set-Dir -Path $DirTemp -Create
-            Write-Log -Info "Writing logs to $LogFile"
+            Write-Log -Info "Logfiles location: $LogFile"
             # Initialize app object
             try {
                 $NinjaApp = & $NinjaRMM -Action 'Initialize'
@@ -889,18 +905,40 @@ foreach ($Action in $Config.Action) {
             if ('Cleanup' -in $Config.Action) {
                 Write-Log -Info "Locating installation directory."
                 $NinjaApp.CleanupDirectories += ($NinjaApp | Get-ApplicationDirectory)
+                Write-Log -Pass "$($NinjaApp.CleanupDirectories)"
             }
             Write-Log -Info "Downloading $($Config.Name) installer."
             Get-File -URL $NinjaApp.URL -Path $NinjaApp.Path
         }
         'Uninstall' {
             $NinjaApp | Invoke-AppInstaller -Action 'uninstall'
+            Start-Sleep -Seconds 5
         }
         'Cleanup' {
             $NinjaApp | Remove-ApplicationComponents
         }
         'Install' {
             $NinjaApp | Invoke-AppInstaller -Action 'install'
+            Start-Sleep -Seconds 5
+        }
+        'Validate' {
+            # Update SvcExe property to full path and validate service binary
+            try {
+                $NinjaDir = $NinjaApp | Get-ApplicationDirectory
+                $NinjaApp | Add-Member -MemberType NoteProperty -Name 'SvcExe' -Value (Join-Path $NinjaDir $NinjaApp.SvcExe ) -Force                
+                Write-Log -Pass "Updated $($Config.Name) PSCustomObject's SvcExe property to full path."
+                Write-Log -Pass "$($NinjaApp.SvcExe)"
+                Test-ServicePath -AppObject $NinjaApp
+            } catch {
+                Write-Log -Warn "Service path update/validation failed: $($_.Exception.Message)"
+                exit 1
+            }
+            if ((Get-Service $NinjaApp.Service).Status -eq 'Running') {
+                Write-Log -Pass "$($NinjaApp.Service) service is running."
+            } else {
+                Write-Log -Fail"$($NinjaApp.Service) service is not running."
+                exit 1
+            }
         }
     }
     Write-Log -HeaderEnd
