@@ -1082,10 +1082,10 @@ $LogFile = Join-Path -Path $DirTemp -ChildPath 'Log_DeployNinja.log'
 
 # Configuration for application deployment
 $Config  = @{
-    Action   = @('Initialize', 'Uninstall', 'Cleanup', 'Install', 'Validate')
+    Action   = @()
     Name     = 'NinjaRMM'
-    Workflow = 'Migration' # Set to 'Migration', 'Reinstallation', or $null
-    TokenID  = ''
+    Workflow = $env:workflow # Set to 'Migration', 'Reinstallation', 'Installation', 'Uninstallation', or $null
+    TokenID  = $env:tokenId
 }
 
 #region ───────────────────────────────────────────── [ VAR.App ] ─────────────────────────────────────────────────────
@@ -1196,10 +1196,21 @@ switch ($Config.Workflow) {
     { $_ -in @('Migration', 'Reinstallation') } {
         $Config.Action = @('Initialize', 'Uninstall', 'Cleanup', 'Install', 'Validate')
     }
-    { $_ -and $_ -notin @('Migration', 'Reinstallation') } {
-        Write-Host '[FAIL] $Config.Workflow must be Migration, Reinstallation, or $null.'
+    { $_ -in @('Installation') } {
+        $Config.Action = @('Initialize', 'Install', 'Validate')
+    }
+    { $_ -in @('Uninstallation') } {
+        $Config.Action = @('Initialize', 'Uninstall', 'Cleanup')
+    }
+    { $_ -and $_ -notin @('Migration', 'Reinstallation', 'Installation', 'Uninstallation') } {
+        Write-Host '[FAIL] $Config.Workflow must be Migration, Reinstallation, Installation, Uninstallation, or $null.'
         exit 1
     }
+}
+
+if ($Config.Workflow -in @('Installation', 'Reinstallation', 'Migration') -and [string]::IsNullOrEmpty($Config.TokenID)) {
+    Write-Host '[FAIL] TokenID is required for Installation, Reinstallation, or Migration workflows.'
+    exit 1
 }
 
 if (-not $env:IS_CHILD_PROCESS -and $Config.Workflow) {
