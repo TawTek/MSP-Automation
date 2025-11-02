@@ -1137,7 +1137,7 @@ $NinjaRMM = {
         CleanupDirectories = @()
 
         # Direct registry paths to remove
-        RegPathExact = @(  # Was: DirectRegistryPaths
+        RegPathExact = @(
             "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC\NinjaRMMAgent",
             "HKLM:\SOFTWARE\$RegKeyArch\NinjaRMM LLC",
             "HKLM:\SOFTWARE\WOW6432Node\WOW6432Node\NinjaRMM LLC" # Mistaken key present in some installs
