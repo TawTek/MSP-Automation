@@ -1192,25 +1192,31 @@ if (-not (Test-Path $DirTemp)) {
     }
 }
 
-switch ($Config.Workflow) {
-    { $_ -in @('Migration', 'Reinstallation') } {
-        $Config.Action = @('Initialize', 'Uninstall', 'Cleanup', 'Install', 'Validate')
-    }
-    { $_ -in @('Installation') } {
-        $Config.Action = @('Initialize', 'Install', 'Validate')
-    }
-    { $_ -in @('Uninstallation') } {
-        $Config.Action = @('Initialize', 'Uninstall', 'Cleanup')
-    }
-    { $_ -and $_ -notin @('Migration', 'Reinstallation', 'Installation', 'Uninstallation') } {
-        Write-Host '[FAIL] $Config.Workflow must be Migration, Reinstallation, Installation, Uninstallation, or $null.'
-        exit 1
-    }
+# Lookup table for actions tied to workflow
+$WorkflowActions = @{
+    Migration      = @('Initialize', 'Uninstall', 'Cleanup', 'Install', 'Validate')
+    Reinstallation = @('Initialize', 'Uninstall', 'Cleanup', 'Install', 'Validate')
+    Installation   = @('Initialize', 'Install', 'Validate')
+    Uninstallation = @('Initialize', 'Uninstall', 'Cleanup')
 }
 
-if ($Config.Workflow -in @('Installation', 'Reinstallation', 'Migration') -and [string]::IsNullOrEmpty($Config.TokenID)) {
-    Write-Host '[FAIL] TokenID is required for Installation, Reinstallation, or Migration workflows.'
-    exit 1
+# Dynamically assign actions based on workflow lookup and validate all required parameters
+switch ($true) {
+    { $Config.Workflow -and -not $WorkflowActions.ContainsKey($Config.Workflow) } {
+        Write-Host "[FAIL] Invalid workflow: $($Config.Workflow)"
+        exit 1
+    }
+    { $Config.Workflow -in @('Migration', 'Reinstallation', 'Installation') -and [string]::IsNullOrEmpty($Config.TokenID) } {
+        Write-Host "[FAIL] TokenID required for $($Config.Workflow)"
+        exit 1
+    }
+    { -not $Config.Workflow -and $Config.Action.Count -eq 0 } {
+        Write-Host '[FAIL] Custom workflow requires actions'
+        exit 1
+    }
+    { $WorkflowActions.ContainsKey($Config.Workflow) } {
+        $Config.Action = $WorkflowActions[$Config.Workflow]
+    }
 }
 
 if (-not $env:IS_CHILD_PROCESS -and $Config.Workflow) {
