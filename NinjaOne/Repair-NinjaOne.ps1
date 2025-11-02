@@ -46,12 +46,29 @@
        - Uses silent installation with verbose logging
        - Monitors installation process and validates exit codes
 
+    [PHASE 6 - VALIDATION (if defined)]
+    7. Installation Verification
+       - Validates service binary path matches expected location
+       - Confirms service is running after installation
+       - Provides installation success/failure status
+    
+    ===WORKFLOW MODES (if defined)===
+    - Migration: Complete uninstall, cleanup, and reinstall with new token
+    - Reinstallation: Full removal and fresh installation
+    - $null: Specify the actions to take in $Config.Action
+
+    ===PROCESS ISOLATION===
+    - For migration/reinstallation workflows, script spawns child process
+    - Prevents premature script termination during uninstall process
+    - Parent process exits while child completes the operation
+
     ===ARCHITECTURE===
     - Pipeline-enabled design using ValueFromPipelineByPropertyName
     - Dynamic log path generation (Log_AppName-Action.log)
     - Multi-method download system (WebRequest, BITS, WebClient, UNC)
     - 32/64-bit architecture detection for registry operations
     - Modular function design for reusability
+    - Dynamic directory discovery
 
     ===ERROR HANDLING===
     - Comprehensive try/catch blocks throughout execution
@@ -59,9 +76,10 @@
     - Multiple uninstall methods for reliable removal
     - Download retry logic with method fallback
     - Graceful degradation when components not found
+    - Orphaned registry key detection and reporting
 
 .PARAMETER Action
-    Required. Specifies deployment action: 'Initialize', 'Uninstall', 'Cleanup', or 'Install'
+    Required. Specifies deployment action: 'Initialize', 'Uninstall', 'Cleanup', 'Install', or 'Validate'
 
 .PARAMETER TokenID
     Required for installation. Site TokenID is found in the NinjaRMM platform.
@@ -69,8 +87,8 @@
 .NOTES
     Developer: TawTek
     Created  : 2023-01-01
-    Updated  : 2025-11-01
-    Version  : 11.5
+    Updated  : 2025-11-02
+    Version  : 12.0
 
     [Reference]
     > https://ninjarmm.zendesk.com/hc/en-us/articles/36038775278349-Custom-Script-NinjaOne-Agent-Removal-Windows
@@ -78,6 +96,8 @@
     - Base scripts referenced that have been enhanced with:
         * Dynamic GUID detection, pipeline support, multi-method downloads
         * Comprehensive logging, parameterization, edge case error handling
+        * Process isolation for migration workflows
+        * Installation validation and service path verification
 #>
 
 #region ══════════════════════════════════════════ { FUNCTION.MAIN } ══════════════════════════════════════════════════
