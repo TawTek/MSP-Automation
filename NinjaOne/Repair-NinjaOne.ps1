@@ -51,7 +51,7 @@
        - Validates service binary path matches expected location
        - Confirms service is running after installation
        - Provides installation success/failure status
-    
+
     ===WORKFLOW MODES (if defined)===
     - Migration: Complete uninstall, cleanup, and reinstall with new token
     - Reinstallation: Full removal and fresh installation
@@ -103,15 +103,75 @@
 #region ══════════════════════════════════════════ { FUNCTION.MAIN } ══════════════════════════════════════════════════
 
 function Invoke-AppInstaller {
+
+    <#
+    [SUMMARY]
+    Executes application installation or uninstallation.
+
+    [PARAMETERS]
+    - $Name        : Required. Name of the application.
+    - $Action      : Required. Action to perform ('Install' or 'Uninstall').
+    - $Path        : Path to the installer file (MSI or EXE).
+    - $MsiInstall  : Array of custom MSI installation arguments.
+    - $MsiUninstall: Array of custom MSI uninstallation arguments.
+    - $ExeInstall  : Array of custom EXE installation arguments.
+    - $ExeUninstall: Array of custom EXE uninstallation arguments.
+
+    [LOGIC]
+    1. Dynamic Log Path Generation:
+       - Generate log path: Log_AppName-Action.log in installer directory or TEMP.
+       - Validate installer file existence before proceeding.
+
+    2. Install Action Processing:
+       - MSI: Build msiexec /i arguments with silent flags and verbose logging.
+       - EXE: Build silent installation arguments with quiet mode and logging.
+       - Use custom argument arrays if provided, with log path templating.
+
+    3. Uninstall Action Processing:
+       - Primary Method: Retrieve application GUID via registry search for GUID-based uninstall.
+       - Fallback Method: Use provided installer file path for file-based uninstall.
+       - MSI: Build msiexec /x arguments with GUID or file path.
+       - EXE: Build uninstall arguments with silent flags.
+       - Custom argument support with GUID/file path substitution.
+
+    4. Process Execution:
+       - Start installer process (msiexec.exe or direct EXE) with built argument list.
+       - Wait for process completion with -Wait and -PassThru parameters.
+       - Implement 2-second cooldown period after execution.
+
+    5. Exit Code Analysis:
+       - Handle null exit codes with success assumption.
+       - Interpret standard Windows Installer exit codes.
+    #>
+
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory,ValueFromPipelineByPropertyName)][string]$Name,
-        [Parameter(ValueFromPipelineByPropertyName)][string]$Path,
-        [Parameter(ValueFromPipelineByPropertyName)][array]$MsiInstall,
-        [Parameter(ValueFromPipelineByPropertyName)][array]$MsiUninstall,
-        [Parameter(ValueFromPipelineByPropertyName)][array]$ExeInstall,
-        [Parameter(ValueFromPipelineByPropertyName)][array]$ExeUninstall,
-        [Parameter(Mandatory,ValueFromPipelineByPropertyName)][string]$Action
+        # App & Action
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
+        [string]$Name,
+
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
+        [ValidateSet('Install', 'Uninstall',
+            ErrorMessage = "Invoke-AppInstaller only supports 'Install' and 'Uninstall'.")]
+        [string]$Action,
+
+        # Installer file
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string]$Path,
+
+        # MSI arguments
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [array]$MsiInstall,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [array]$MsiUninstall,
+
+        # EXE arguments
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [array]$ExeInstall,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [array]$ExeUninstall
     )
 
     process {
@@ -149,7 +209,7 @@ function Invoke-AppInstaller {
                             $ArgList = if ($ExeInstall) {
                                 ($ExeInstall -join " ") -replace "{{LogPath}}", $LogPath -split " "
                             } else {
-                                @("/quiet", "/norestart". "/log", "`"$LogPath`"")
+                                @("/quiet", "/norestart", "/log", "`"$LogPath`"")
                             }
                         }
                         default {
@@ -208,6 +268,7 @@ function Invoke-AppInstaller {
             }
 
             Write-Log -Info "$ArgList"
+            Write-Log -Info "Logfile location: $LogPath"
             Write-Log -Info "Attempting to $Action $Name."
             $Process = Start-Process -FilePath $ProcessExe -ArgumentList $ArgList -Wait -NoNewWindow -PassThru
             Start-Sleep -Seconds 2
@@ -228,15 +289,61 @@ function Invoke-AppInstaller {
     }
 }
 
-function Remove-ApplicationComponents {
+function Clear-AppRemnants {
+
+    <#
+    [SUMMARY]
+    Removes leftover application components including services, processes, directories, and registry entries.
+
+    [PARAMETERS]
+    - $Name              : Required. Name of the application being cleaned up.
+    - $CleanupServices   : Array of service names to stop and remove.
+    - $CleanupProcesses  : Array of process names to terminate.
+    - $CleanupDirectories: Array of directory paths to delete.
+    - $RegPathExact      : Array of specific registry paths to remove.
+    - $RegSearch         : Array of registry search patterns to find and remove keys.
+
+    [LOGIC]
+    1. Initialize tracking objects for each cleanup category.
+    2. Process services: Stop each service and remove via sc.exe DELETE.
+    3. Process processes: Terminate each running process by name.
+    4. Process directories: Force delete directories using cmd.exe rd /s /q.
+    5. Process registry:
+       - Remove exact registry paths specified in $RegPathExact.
+       - Search and remove registry keys based on patterns in $RegSearch.
+       - Detect orphaned registry keys with missing ProductName property.
+    6. Generate comprehensive status reports for each cleanup category.
+    7. Report orphaned registry keys that may prevent reinstallation.
+    8. Return final success/warning status based on cleanup results.
+
+    [OUTPUT]
+    - Detailed status reports showing removed, not found, and failed items.
+    - Warnings for orphaned registry keys that require manual attention.
+    - Success message if all components removed, warning if some remain.
+    #>
+
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory, ValueFromPipelineByPropertyName)][string]$Name,
-        [Parameter(ValueFromPipelineByPropertyName)][string[]]$CleanupServices    = @(),
-        [Parameter(ValueFromPipelineByPropertyName)][string[]]$CleanupProcesses   = @(),
-        [Parameter(ValueFromPipelineByPropertyName)][string[]]$CleanupDirectories = @(),
-        [Parameter(ValueFromPipelineByPropertyName)][string[]]$RegPathExact       = @(),
-        [Parameter(ValueFromPipelineByPropertyName)][array]$RegSearch             = @()
+        # App
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
+        [string]$Name,
+
+        # Service, Process, Directory cleanup
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string[]]$CleanupServices = @(),
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string[]]$CleanupProcesses = @(),
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string[]]$CleanupDirectories = @(),
+
+        # Registry cleanup
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string[]]$RegPathExact = @(),
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [array]$RegSearch = @()
     )
 
     process {
@@ -463,10 +570,48 @@ function Remove-ApplicationComponents {
 
 #region ═══════════════════════════════════════ { FUNCTION.ANCILLARY } ════════════════════════════════════════════════
 
-function Get-ApplicationDirectory {
+function Get-AppDirectory {
+
+    <#
+    [SUMMARY]
+    Discovers the installation directory of an application.
+
+    [PARAMETERS]
+    - $AppObject: Required. PSCustomObject containing application configuration with:
+        * Name: Application name
+        * Vendor: Application vendor
+        * RegPathExact: Array of registry paths to search
+        * Service: Service name for service-based discovery
+        * AgentExe: Expected executable name for validation
+
+    [LOGIC]
+    1. Registry Discovery:
+       - Use RegPathExact from AppObject or generate fallback registry paths.
+       - Check common installation location properties.
+       - Validate discovered path by checking for AgentExe existence.
+
+    2. Service Discovery:
+       - Query Win32_Service for the application service.
+       - Extract service binary path and get parent directory.
+       - Validate directory by checking for AgentExe existence.
+
+    3. Validation:
+       - All discovered paths are validated by testing for AgentExe presence.
+       - Paths are cleaned (normalized slashes, trimmed trailing backslashes).
+
+    4. Fallback:
+       - If no valid directory found, log warning and return $null.
+
+    [OUTPUT]
+    - Returns clean, validated installation directory path if found.
+    - Returns $null if no valid installation directory discovered.
+    - Logs discovery method and success/failure status.
+    #>
+
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory,ValueFromPipeline)][PSCustomObject]$AppObject
+        [Parameter(Mandatory,ValueFromPipeline)]
+        [PSCustomObject]$AppObject
     )
 
     process {
@@ -542,9 +687,16 @@ function Get-File {
 
     [CmdletBinding()]
     param(
-        [Parameter(ValueFromPipelineByPropertyName)][string]$URL,
-        [Parameter(ValueFromPipelineByPropertyName)][string]$Path,
-        [Parameter(ValueFromPipelineByPropertyName)][string]$UNC
+        # Download sources
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string]$URL,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string]$UNC,
+
+        # Destination
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string]$Path
     )
 
     $ProgressPreference = 'SilentlyContinue'
@@ -587,6 +739,39 @@ function Get-File {
 }
 
 function Get-GUID {
+
+    <#
+    [SUMMARY]
+    Retrieves the Windows Installer GUID for an application from registry entries.
+
+    [PARAMETERS]
+    - $App: Required. Name of the application to search for.
+
+    [LOGIC]
+    1. Registry Path Configuration:
+       - Detect system architecture (32/64-bit) for correct registry hive.
+       - Define registry paths for uninstall entries and installer user data.
+
+    2. Primary Search Method - Uninstall Registry:
+       - Search HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall.
+       - Include WOW6432Node path for 32-bit applications on 64-bit systems.
+       - Filter for display names containing application name with msiexec uninstall strings.
+
+    3. Secondary Search Method - Installer User Data:
+       - Search HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData.
+       - Navigate to S-1-5-18 (Local System context) products.
+       - Examine InstallProperties subkeys for matching display names.
+
+    4. GUID Extraction:
+       - Parse uninstall string using regex pattern for GUID format.
+       - Extract the first GUID match in {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} format.
+       - Return null if no matching uninstall string found.
+
+    [OUTPUT]
+    - Returns application GUID in registry format if found.
+    - Returns $null if no GUID can be located for the application.
+    #>
+
     param (
         [string]$App
     )
@@ -674,7 +859,37 @@ function Set-Dir {
 }
 
 function Test-ServicePath {
-    param([PSCustomObject]$AppObject)
+
+    <#
+    [SUMMARY]
+    Validates that a service's actual binary path matches the expected path from application configuration.
+
+    [PARAMETERS]
+    - $AppObject: Required. PSCustomObject containing application configuration with:
+        * Service: Service name to validate
+        * SvcExe: Expected full path to service executable
+
+    [LOGIC]
+    1. Service Binary Path Retrieval:
+       - Execute 'sc.exe qc' command to query service configuration.
+       - Parse BINARY_PATH_NAME field from service control manager output.
+       - Extract executable path, removing surrounding quotes if present.
+
+    2. Path Comparison:
+       - Compare actual service binary path with expected SvcExe path.
+       - Perform exact string comparison between the two paths.
+
+    [OUTPUT]
+    - Success log entry when service path matches expected configuration.
+    - Warning with path details when mismatch detected.
+    - Error logging if service query fails to execute.
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory,ValueFromPipeline)]
+        [PSCustomObject]$AppObject
+    )
 
     try {
         $ActualPath = (
@@ -695,8 +910,54 @@ function Test-ServicePath {
 }
 
 function Write-Log {
+
+    <#
+    [SUMMARY]
+    Logging function with multiple output types, colors, and formatting options.
+
+    [PARAMETERS]
+    - $Info, $Pass, $Warn, $Fail: Switch parameters for different log levels with colored output.
+    - $View: Switch for raw message output without prefixes or coloring.
+    - $Header, $HeaderEnd: Switches for section header formatting with decoration.
+    - $SystemInfo: Switch for comprehensive system information block.
+    - $Message: The log message text (position 0 for most parameter sets).
+    - $LogPath: Path to log file (defaults to $LogFile).
+    - $Decoration: Character used for header decoration lines (default: "-").
+    - $HeaderWidth: Width of header lines in characters (default: 120).
+
+    [LOGIC]
+    1. Parameter Set Routing:
+       - Use PowerShell parameter sets to handle mutually exclusive log types.
+       - SystemInfo: Output pre-formatted system information block with hardware details.
+       - Header: Create centered text with decoration characters for section headers.
+       - HeaderEnd: Create full-width decoration lines for section endings.
+       - View: Use for Format-Table and List to write to log as well as view in console.
+
+    2. Message Formatting:
+       - Standard messages: Apply timestamp and type prefix ([INFO], [PASS], etc.).
+       - Color coding: White (Info), DarkCyan (Pass), Yellow (Warn), Red (Fail).
+       - Header centering: Calculate padding for centered text with dynamic width.
+
+    3. Output Handling:
+       - Console: Write colored output appropriate for each log level.
+       - File: Write timestamped entries with UTF8 encoding.
+       - Error resilience: Continue console output if file writing fails.
+
+    4. System Information:
+       - Capture execution context, system specs, and environment details.
+       - Include memory, disk space, PowerShell version, and process information.
+       - Output as pre-formatted multi-line block with border decoration.
+
+    [OUTPUT]
+    - Console: Colored output based on log level with appropriate prefixes.
+    - File: Timestamped log entries with consistent formatting.
+    - Headers: Centered text with decorative borders for section organization.
+    - System Info: Comprehensive environment snapshot for troubleshooting.
+    #>
+
     [CmdletBinding()]
     param(
+        # Log type switches
         [Parameter(ParameterSetName = "Info")][switch]$Info,
         [Parameter(ParameterSetName = "Pass")][switch]$Pass,
         [Parameter(ParameterSetName = "Warn")][switch]$Warn,
@@ -705,6 +966,8 @@ function Write-Log {
         [Parameter(ParameterSetName = "Header")][switch]$Header,
         [Parameter(ParameterSetName = "HeaderEnd")][switch]$HeaderEnd,
         [Parameter(ParameterSetName = "SystemInfo")][switch]$SystemInfo,
+
+        # Message parameter with multiple parameter sets
         [Parameter(Position = 0, ParameterSetName = "Info")]
         [Parameter(Position = 0, ParameterSetName = "Pass")]
         [Parameter(Position = 0, ParameterSetName = "Warn")]
@@ -712,9 +975,11 @@ function Write-Log {
         [Parameter(Position = 0, ParameterSetName = "View")]
         [Parameter(Position = 0, ParameterSetName = "Header")]
         [string]$Message,
-        [string]$LogPath    = $LogFile,
+
+        # Log configuration
+        [string]$LogPath = $LogFile,
         [string]$Decoration = "-",
-        [int]$HeaderWidth   = 120
+        [int]$HeaderWidth = 120
     )
 
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -846,20 +1111,20 @@ $NinjaRMM = {
 
         # Installer Arguments
         MsiInstall = @(
-            "/i", 
-            "`"$Installer`"", 
+            "/i",
+            "`"$Installer`"",
             $(if ($Config.TokenID) { "TOKENID=`"$($Config.TokenID)`"" }),
-            "/qn", 
-            "/L*V", 
+            "/qn",
+            "/L*V",
             "`"{{LogPath}}`""
         ) | Where-Object { $_ }  # Remove empty TokenID if not present
 
         MsiUninstall = @(
-            "/uninstall", 
-            "`"$Installer`"", 
-            "/quiet", 
-            "/norestart", 
-            "/L*V", 
+            "/uninstall",
+            "`"$Installer`"",
+            "/quiet",
+            "/norestart",
+            "/L*V",
             "`"{{LogPath}}`"",
             "WRAPPED_ARGUMENTS=`"--mode unattended`""
         )
@@ -930,8 +1195,8 @@ if (-not (Test-Path $DirTemp)) {
 }
 
 switch ($Config.Workflow) {
-    { $_ -in @('Migration', 'Reinstallation') } { 
-        $Config.Action = @('Initialize', 'Uninstall', 'Cleanup', 'Install', 'Validate') 
+    { $_ -in @('Migration', 'Reinstallation') } {
+        $Config.Action = @('Initialize', 'Uninstall', 'Cleanup', 'Install', 'Validate')
     }
     { $_ -and $_ -notin @('Migration', 'Reinstallation') } {
         Write-Host '[FAIL] $Config.Workflow must be Migration, Reinstallation, or $null.'
@@ -982,7 +1247,7 @@ foreach ($Action in $Config.Action) {
             # If 'Cleanup' action is defined, discover program folder dynamically and add to CleanupDirectories
             if ('Cleanup' -in $Config.Action) {
                 Write-Log -Info "Locating installation directory."
-                $NinjaApp.CleanupDirectories += ($NinjaApp | Get-ApplicationDirectory)
+                $NinjaApp.CleanupDirectories += ($NinjaApp | Get-AppDirectory)
                 Write-Log -Pass "$($NinjaApp.CleanupDirectories)"
             }
             Write-Log -Info "Downloading $($Config.Name) installer."
@@ -993,7 +1258,7 @@ foreach ($Action in $Config.Action) {
             Start-Sleep -Seconds 5
         }
         'Cleanup' {
-            $NinjaApp | Remove-ApplicationComponents
+            $NinjaApp | Clear-AppRemnants
         }
         'Install' {
             $NinjaApp | Invoke-AppInstaller -Action 'install'
@@ -1002,7 +1267,7 @@ foreach ($Action in $Config.Action) {
         'Validate' {
             # Update SvcExe property to full path and validate service binary
             try {
-                $NinjaDir = $NinjaApp | Get-ApplicationDirectory
+                $NinjaDir = $NinjaApp | Get-AppDirectory
                 $NinjaApp | Add-Member -MemberType NoteProperty -Name 'SvcExe' -Value (Join-Path $NinjaDir $NinjaApp.SvcExe ) -Force
                 Write-Log -Pass "Updated $($Config.Name) PSCustomObject's SvcExe property to full path."
                 Write-Log -Pass "$($NinjaApp.SvcExe)"
