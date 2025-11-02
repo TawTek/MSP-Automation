@@ -1,10 +1,8 @@
 function New-Region {
     param(
         [string]$Title,
-        [ValidateSet('Main','Sub','Nest')]
-        [string]$Level,
-        [ValidateSet('Region','EndRegion','EndRegionOnly')]
-        [string]$Type,
+        [ValidateSet('Main','Sub','Nest')][string]$Level,
+        [ValidateSet('Region','EndRegion','EndRegionOnly')][string]$Type,
         [int]$LineLength = 120,
         [switch]$Clear
     )
@@ -47,7 +45,7 @@ function New-Region {
         $FullLine        = $Decoration * $PaddingNeeded
         $Result          = "$PrefixWithSpace$FullLine"
     } else {
-        $Content  = " ${LeftEnclosure}${Title}${RightEnclosure} "
+        $Content  = " ${LeftEnclosure} ${Title} ${RightEnclosure} "
         $TotalPad = ($LineLength - 1) - $Content.Length
         $LeftPad  = $Decoration * [math]::Floor($TotalPad / 2)
         $RightPad = $Decoration * ($TotalPad - [math]::Floor($TotalPad / 2))
@@ -67,11 +65,27 @@ function New-Region {
 }
 
 # Usage Examples:
+
 # New-Region -Title "FUNCTION.MAIN" -Level Main -Type Region
 # New-Region -Title "FUNCTION.MAIN" -Level Main -Type EndRegion
-# New-Region -Title "FUNCTION.MAIN" -Level Sub -Type Region -LineLength 100
-# New-Region -Title "FUNCTION.MAIN" -Level Sub -Type EndRegion -LineLength 100
-# New-Region -Title "FUNCTION.MAIN" -Level Nest -Type Region
-# New-Region -Title "FUNCTION.MAIN" -Level Nest -Type EndRegion
-# New-Region -EndRegionOnly
+# New-Region -Title "FUNCTION.Sub" -Level Sub -Type Region
+# New-Region -Title "FUNCTION.Sub" -Level Sub -Type EndRegion
+# New-Region -Title "FUNCTION.Nest" -Level Nest -Type Region
+# New-Region -Title "FUNCTION.Nest" -Level Nest -Type EndRegion
+
+# New-Region -Title "FUNCTION.MAIN" -Level Main -Type Region -LineLength 100
+# New-Region -Title "FUNCTION.MAIN" -Level Main -Type EndRegion -LineLength 100
+# New-Region -Title "FUNCTION.Sub" -Level Sub -Type Region -LineLength 100
+# New-Region -Title "FUNCTION.Sub" -Level Sub -Type EndRegion -LineLength 100
+# New-Region -Title "FUNCTION.Nest" -Level Nest -Type Region -LineLength 100
+# New-Region -Title "FUNCTION.Nest" -Level Nest -Type EndRegion -LineLength 100
+
+# New-Region -Level Main -Type EndRegionOnly
+# New-Region -Level Sub -Type EndRegionOnly
+# New-Region -Level Nest -Type EndRegionOnly
+
+# New-Region -Level Main -Type EndRegionOnly -LineLength 100
+# New-Region -Level Sub -Type EndRegionOnly -LineLength 100
+# New-Region -Level Nest -Type EndRegionOnly -LineLength 100
+
 # New-Region -Clear
