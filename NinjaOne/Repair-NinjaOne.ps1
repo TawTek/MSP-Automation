@@ -151,9 +151,6 @@ function Invoke-AppInstaller {
         [string]$Name,
 
         [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
-        [ValidatePattern('^(install|uninstall)$', 
-            Options = 'IgnoreCase',
-            ErrorMessage = "Invoke-AppInstaller only supports 'Install' and 'Uninstall'.")]
         [string]$Action,
 
         # Installer file
