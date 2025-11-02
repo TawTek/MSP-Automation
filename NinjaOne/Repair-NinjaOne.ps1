@@ -246,7 +246,7 @@ function Remove-ApplicationComponents {
             Orphaned    = @()
         }
 
-        Write-Log -Info "Attempting to remove leftover services, processes, directories, and registry keys."
+        Write-Log -Info "Attempting to remove leftover services, processes, directories, and registry keys.`n"
 
         # Process services
         foreach ($ServiceName in $CleanupServices) {
@@ -655,13 +655,13 @@ function Set-Dir {
 
 function Test-ServicePath {
     param([PSCustomObject]$AppObject)
-    
+
     try {
         $ActualPath = (
-            & sc.exe qc $($AppObject.Service) | 
+            & sc.exe qc $($AppObject.Service) |
             Select-String 'BINARY_PATH_NAME\s+:\s+(.+)'
         ).Matches.Groups[1].Value.Trim('"')
-        
+
         if ($AppObject.SvcExe -eq $ActualPath) {
             Write-Log -Pass "Service path successfully validated."
         } else {
@@ -794,14 +794,15 @@ Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).T
 
 #region ═════════════════════════════════════════ { VARIABLE.GLOBAL } ═════════════════════════════════════════════════
 
-$DirTemp = 'C:\Temp'; if (-not (Test-Path $DirTemp)) { New-Item -Path $DirTemp -ItemType Directory -Force | Out-Null }
+$DirTemp = 'C:\Temp'
 $LogFile = Join-Path -Path $DirTemp -ChildPath 'Log_DeployNinja.log'
 
 # Configuration for application deployment
 $Config  = @{
-    Action  = @('Initialize', 'Uninstall', 'Cleanup', 'Install', 'Validate')
-    Name    = 'NinjaRMM'
-    TokenID = ''
+    Action   = @('Initialize', 'Uninstall', 'Cleanup', 'Install', 'Validate')
+    Name     = 'NinjaRMM'
+    Workflow = 'Migration' # Set to 'Migration', 'Reinstallation', or $null
+    TokenID  = ''
 }
 
 #region ───────────────────────────────────────────── [ VAR.App ] ─────────────────────────────────────────────────────
@@ -825,10 +826,21 @@ $NinjaRMM = {
 
         # Installer Arguments
         MsiInstall = @(
-            "/i", "`"$Installer`"", "TOKENID=`"$($Config.TokenID)`"", "/qn", "/L*V", "`"{{LogPath}}`""
-        )
+            "/i", 
+            "`"$Installer`"", 
+            $(if ($Config.TokenID) { "TOKENID=`"$($Config.TokenID)`"" }),
+            "/qn", 
+            "/L*V", 
+            "`"{{LogPath}}`""
+        ) | Where-Object { $_ }  # Remove empty TokenID if not present
+
         MsiUninstall = @(
-            "/uninstall", "`"$Installer`"", "/quiet", "/norestart", "/L*V", "`"{{LogPath}}`""
+            "/uninstall", 
+            "`"$Installer`"", 
+            "/quiet", 
+            "/norestart", 
+            "/L*V", 
+            "`"{{LogPath}}`"",
             "WRAPPED_ARGUMENTS=`"--mode unattended`""
         )
 
@@ -885,14 +897,60 @@ $NinjaRMM = {
 
 #region ════════════════════════════════════════ { SCRIPT.EXECUTION } ═════════════════════════════════════════════════
 
+#region ──────────────────────────────────────── [ SCRIPT.Preflight ] ─────────────────────────────────────────────────
+
+if (-not (Test-Path $DirTemp)) {
+    try {
+        Set-Dir -Path $DirTemp -Create | Out-Null
+    } catch {
+        Write-Host "[FAIL] Could not create temporary directory, terminating script."
+        Write-Host "[FAIL] Error: $($_.Exception.Message)"
+        exit 1
+    }
+}
+
+switch ($Config.Workflow) {
+    { $_ -in @('Migration', 'Reinstallation') } { 
+        $Config.Action = @('Initialize', 'Uninstall', 'Cleanup', 'Install', 'Validate') 
+    }
+    { $_ -and $_ -notin @('Migration', 'Reinstallation') } {
+        Write-Host '[FAIL] $Config.Workflow must be Migration, Reinstallation, or $null.'
+        exit 1
+    }
+}
+
+if (-not $env:IS_CHILD_PROCESS -and $Config.Workflow) {
+    Write-Host "`n[INFO] Starting $($Config.Name) $($Config.Workflow.ToLower()) procedure."
+    Write-Host "[INFO] Process isolation required to complete $($Config.Name) $($Config.Workflow.ToLower())."
+
+    # Set environment variable so child process knows it's already a child
+    Start-Process -FilePath "powershell.exe" -ArgumentList @(
+        "-NoProfile",
+        "-Command", "`$env:IS_CHILD_PROCESS='1'; & `"$PSCommandPath`""
+    ) -WindowStyle Hidden
+
+    Write-Host "[PASS] $($Config.Name) $($Config.Workflow.ToLower()) handed off to child process, closing parent context."
+    Write-Host "[INFO] $($Config.Name) $($Config.Workflow.ToLower()) may take up to 10 minutes to complete."
+    Write-Host "[INFO] Refer to logfile for $($Config.Name) $($Config.Workflow.ToLower()) progress and results."
+    Write-Host "[INFO] Logfile location: $LogFile"
+    exit 0
+}
+
 Write-Log -SystemInfo
+Write-Log -Header 'PREFLIGHT'
+Write-Log -Info "$($Config.Name) $($Config.Workflow.ToLower()) is running in protected execution context (PID: $PID)."
+Write-Log -Pass "Temporary directory: $DirTemp"
+Write-Log -Pass "Logfile location: $LogFile"
+Write-Log -HeaderEnd
+
+#endregion ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+#region ─────────────────────────────────────────── [ SCRIPT.Main ] ───────────────────────────────────────────────────
 
 foreach ($Action in $Config.Action) {
     Write-Log -Header $Action.ToUpper()
     switch ($Action) {
         'Initialize' {
-            Write-Log -Info "Initializing temporary directory." ; Set-Dir -Path $DirTemp -Create
-            Write-Log -Info "Logfiles location: $LogFile"
             # Initialize app object
             try {
                 $NinjaApp = & $NinjaRMM -Action 'Initialize'
@@ -925,7 +983,7 @@ foreach ($Action in $Config.Action) {
             # Update SvcExe property to full path and validate service binary
             try {
                 $NinjaDir = $NinjaApp | Get-ApplicationDirectory
-                $NinjaApp | Add-Member -MemberType NoteProperty -Name 'SvcExe' -Value (Join-Path $NinjaDir $NinjaApp.SvcExe ) -Force                
+                $NinjaApp | Add-Member -MemberType NoteProperty -Name 'SvcExe' -Value (Join-Path $NinjaDir $NinjaApp.SvcExe ) -Force
                 Write-Log -Pass "Updated $($Config.Name) PSCustomObject's SvcExe property to full path."
                 Write-Log -Pass "$($NinjaApp.SvcExe)"
                 Test-ServicePath -AppObject $NinjaApp
@@ -943,5 +1001,7 @@ foreach ($Action in $Config.Action) {
     }
     Write-Log -HeaderEnd
 }
+
+#endregion ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 #endregion ════════════════════════════════════════════════════════════════════════════════════════════════════════════
