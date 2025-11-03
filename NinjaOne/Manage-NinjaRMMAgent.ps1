@@ -812,6 +812,7 @@ function Set-Dir {
     - $Path  : The path to create or delete the directory at.
     - $Create: If declared, create the directory.
     - $Remove: If declared, delete the directory.
+    - $Silent: If declared, suppress all output messages.
 
     [LOGIC]
     1. Check if both $Create and $Remove switches are not declared, if so, throw an error.
@@ -822,11 +823,12 @@ function Set-Dir {
     param (
         [string]$Path,
         [switch]$Create,
-        [switch]$Remove
+        [switch]$Remove,
+        [switch]$Silent
     )
 
     if (-not $Create.IsPresent -and -not $Remove.IsPresent) {
-        Write-Log -Fail "Must declare -Create or -Remove switch with Set-Dir function."
+        if (-not $Silent) { Write-Host "[FAIL] Must declare -Create or -Remove switch with Set-Dir function." }
         exit 1
     }
 
@@ -834,23 +836,21 @@ function Set-Dir {
         { $Create.IsPresent } {
             if (-not (Test-Path -Path $Path)) {
                 try {
-                    Write-Log -Info "Creating directory at $Path."
                     New-Item -Path $Path -ItemType "Directory" | Out-Null
-                    Write-Log -Pass "Created directory at $Path."
+                    if (-not $Silent) { Write-Log -Pass "Created directory at $Path." }
                 } catch {
-                    Write-Log -Fail "Failed to create directory. $($_.Exception.Message)"
+                    if (-not $Silent) { Write-Log -Fail "Failed to create directory. $($_.Exception.Message)" }
                 }
             } else {
-                Write-Log -Info "Directory exists at $Path"
+                if (-not $Silent) { Write-Log -Info "Directory exists at $Path" }
             }
         }
         { $Remove.IsPresent } {
             try {
-                Write-Log -Info "Deleting directory at $Path."
                 Remove-Item -Path $Path -Recurse -Force -EA Stop
-                Write-Log -Pass "Directory deleted at $Path."
+                if (-not $Silent) { Write-Log -Pass "Directory deleted at $Path." }
             } catch {
-                Write-Log -Fail "Failed to remove directory. $($_.Exception.Message)"
+                if (-not $Silent) { Write-Log -Fail "Failed to remove directory. $($_.Exception.Message)" }
             }
         }
     }
@@ -1133,7 +1133,7 @@ $NinjaRMM = {
 
         # Cleanup Properties
         CleanupServices    = @('NinjaRMMAgent', 'nmsmanager')
-        CleanupProcesses   = @('NinjaRMMProxyProcess64')
+        CleanupProcesses   = @('NinjaRMMProxyProcess64', 'lockhart')
         CleanupDirectories = @()
 
         # Direct registry paths to remove
@@ -1184,7 +1184,7 @@ $NinjaRMM = {
 
 if (-not (Test-Path $DirTemp)) {
     try {
-        Set-Dir -Path $DirTemp -Create | Out-Null
+        Set-Dir -Path $DirTemp -Create -Silent
     } catch {
         Write-Host "[FAIL] Could not create temporary directory, terminating script."
         Write-Host "[FAIL] Error: $($_.Exception.Message)"
@@ -1270,7 +1270,7 @@ foreach ($Action in $Config.Action) {
         }
         'Uninstall' {
             $NinjaApp | Invoke-AppInstaller -Action 'uninstall'
-            Start-Sleep -Seconds 5
+            Start-Sleep -Seconds 10
         }
         'Cleanup' {
             $NinjaApp | Clear-AppRemnants
