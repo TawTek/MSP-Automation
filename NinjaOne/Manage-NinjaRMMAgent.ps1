@@ -910,17 +910,17 @@ function Test-ServicePath {
     )
 
     try {
-        $ActualPath = (
-            & sc.exe qc $($AppObject.Service) |
-            Select-String 'BINARY_PATH_NAME\s+:\s+(.+)'
-        ).Matches.Groups[1].Value.Trim('"')
+    $ActualPath = (
+        & sc.exe qc $($AppObject.Service) |
+        Select-String 'BINARY_PATH_NAME\s+:\s+(.+)'
+    ).Matches.Groups[1].Value.Trim('"')
 
-        if ($AppObject.SvcExe -eq $ActualPath) {
-            Write-Log -Pass "Service path successfully validated."
-        } else {
-            Write-Log -Warn "Service path mismatch."
-            Write-Log -Warn "Expected: $($AppObject.SvcExe)"
-            Write-Log -Warn "Found: $ActualPath"
+    if ($AppObject.SvcExe -eq $ActualPath) {
+        Write-Log -Pass "Service path successfully validated."
+    } else {
+        Write-Log -Warn "Service path mismatch."
+        Write-Log -Warn "Expected: $($AppObject.SvcExe)"
+        Write-Log -Warn "Found: $ActualPath"
         }
     } catch {
         Write-Log -Warn "Service path validation failed: $($_.Exception.Message)"
@@ -997,7 +997,7 @@ function Write-Log {
         # Log configuration
         [string]$LogPath = $LogFile,
         [string]$Decoration = "-",
-        [int]$HeaderWidth = $(if ($NinjaConsole) { 100 } else { 120 })
+        [int]$HeaderWidth = $(if ($NinjaConsole) { 107 } else { 120 })
     )
 
     # Handle logfile failure tracking and recovery
@@ -1014,8 +1014,13 @@ function Write-Log {
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
     if ($SystemInfo) {
-        $SystemInfoContent = @"
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> SYSTEM INFORMATION <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    $title = "SYSTEM INFORMATION"  # No spaces - 19 characters
+    $sideLength = [math]::Floor((($HeaderWidth - 1) - ($title.Length + 2)) / 2)  # -1 for VSCode, +2 for spaces
+    $topLine = ('>' * $sideLength) + " $title " + ('<' * $sideLength)
+    $bottomLine = '>' * ($HeaderWidth - 1)  # Subtract 1 for VSCode
+
+    $SystemInfoContent = @"
+$topLine
 Execution Time:   $($TimeStamp)
 Executed By:      $($env:USERDOMAIN)\$($env:USERNAME)
 Host Computer:    $($env:COMPUTERNAME)
@@ -1023,11 +1028,11 @@ PS Version:       $($PSVersionTable.PSVersion)
 Process ID:       $PID
 C: Drive Free:    $(try { [math]::Round((Get-PSDrive C).Free / 1GB, 2) } catch { "N/A" }) GB
 Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2) } catch { "N/A" }) GB
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+$bottomLine
 "@
-        Write-Host "`n$SystemInfoContent" -ForegroundColor "DarkGray"
-        if (-not $script:LogfileFail) { $SystemInfoContent | Out-File -FilePath $LogPath -Encoding UTF8 }
-        return
+    Write-Host "`n$SystemInfoContent" -ForegroundColor "DarkGray"
+    if (-not $script:LogfileFail) { $SystemInfoContent | Out-File -FilePath $LogPath -Encoding UTF8 }
+    return
     }
 
     if ($Header) {
@@ -1352,7 +1357,7 @@ if (-not $env:IS_CHILD_PROCESS -and $Config.Workflow) {
     Write-Log -Info "$($Config.Name) $($Config.Workflow.ToLower()) may take up to 10 minutes to complete."
     Write-Log -Info "Refer to logfile for $($Config.Name) $($Config.Workflow.ToLower()) progress and results."
     Write-Log -Info "Logfile location: $LogFile"
-    Write-Log
+    Write-Log -HeaderEnd
     exit 0
 }
 
@@ -1380,6 +1385,7 @@ foreach ($Action in $Config.Action) {
                 Write-Log -Pass "$($Config.Name) PSCustomObject initialized."
             } catch {
                 Write-Log -Fail "Could not initilize $($Config.Name) PSCustomObject, terminating script."
+                Write-Log -HeaderEnd
                 exit 1
             }
             # If 'Cleanup' action is defined, discover program folder dynamically and add to CleanupDirectories
@@ -1415,7 +1421,7 @@ foreach ($Action in $Config.Action) {
                 exit 1
             }
             if ((Get-Service $NinjaApp.Service).Status -eq 'Running') {
-                Write-Log -Pass "$($NinjaApp.Service) service is running."
+                        Write-Log -Pass "$($NinjaApp.Service) service is running."
             } else {
                 Write-Log -Fail"$($NinjaApp.Service) service is not running."
                 exit 1
