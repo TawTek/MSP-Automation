@@ -62,6 +62,11 @@
     - Prevents premature script termination during uninstall process
     - Parent process exits while child completes the operation
 
+    ===REMOTE TOOL INTEGRATION===
+    - Optional remote tool deployment before executing workflow
+    - Configurable via RemoteTool and RemoteToolURL parameters
+    - Bypass option for workflows requiring remote access continuity
+
     ===ARCHITECTURE===
     - Pipeline-enabled design using ValueFromPipelineByPropertyName
     - Dynamic log path generation (Log_AppName-Action.log)
@@ -77,6 +82,7 @@
     - Download retry logic with method fallback
     - Graceful degradation when components not found
     - Orphaned registry key detection and reporting
+    - Log file failure resilience with console fallback
 
 .PARAMETER Action
     Required. Specifies deployment action: 'Initialize', 'Uninstall', 'Cleanup', 'Install', or 'Validate'
@@ -84,10 +90,22 @@
 .PARAMETER TokenID
     Required for installation. Site TokenID is found in the NinjaRMM platform.
 
+.PARAMETER Workflow
+    Optional. Predefined workflow: 'Migration', 'Reinstallation', 'Installation', or 'Uninstallation'
+
+.PARAMETER RemoteTool
+    Optional. Deploy remote tool if set to 'True'
+
+.PARAMETER RemoteToolURL
+    Optional. URL for remote tool installer when RemoteTool is 'True'
+
+.PARAMETER RemoteToolBypass
+    Optional. Skip remote tool backup during migration/reinstallation workflows
+
 .NOTES
     Developer: TawTek
     Created  : 2023-01-01
-    Updated  : 2025-11-02
+    Updated  : 2025-11-04
     Version  : 12.0
 
     [Reference]
@@ -98,6 +116,7 @@
         * Comprehensive logging, parameterization, edge case error handling
         * Process isolation for migration workflows
         * Installation validation and service path verification
+        * Remote tool integration and bypass options
 #>
 
 #region ══════════════════════════════════════════ { FUNCTION.MAIN } ══════════════════════════════════════════════════
