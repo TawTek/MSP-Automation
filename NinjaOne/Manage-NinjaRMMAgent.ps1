@@ -1247,7 +1247,13 @@ $ScreenConnect = {
 
 #region ──────────────────────────────────────── [ SCRIPT.Preflight ] ─────────────────────────────────────────────────
 
-if ($Config.Workflow -and $Config.Workflow -notin @('Migration', 'Reinstallation')) { Write-Log -SystemInfo }
+switch ($true) {
+    { [string]::IsNullOrEmpty($Config.Workflow) -or 
+        ($Config.Workflow -and $Config.Workflow -notin @('Migration', 'Reinstallation'))
+    } { 
+        Write-Log -SystemInfo
+    }
+}
 
 if (Test-Path $DirTemp) {
     Write-Log -Header 'PREFLIGHT' -HeaderWidth '100'
