@@ -1082,11 +1082,12 @@ $LogFile = Join-Path -Path $DirTemp -ChildPath 'Log_DeployNinja.log'
 
 # Configuration for application deployment
 $Config  = @{
-    Action     = @()
-    Name       = 'NinjaRMM'
-    RemoteTool = $env:remoteTool
-    Workflow   = $env:workflow # Set to 'Migration', 'Reinstallation', 'Installation', 'Uninstallation', or $null
-    TokenID    = $env:tokenId
+    Action        = @()
+    Name          = 'NinjaRMM'
+    RemoteTool    = $env:remoteTool
+    RemoteToolURL = $env:remoteToolUrl
+    Workflow      = $env:workflow       # Set to 'Migration', 'Reinstallation', 'Installation', 'Uninstallation', or $null
+    TokenID       = $env:tokenId
 }
 
 #region ───────────────────────────────────────────── [ VAR.App ] ─────────────────────────────────────────────────────
@@ -1187,7 +1188,7 @@ $ScreenConnect = {
         # Installer Properties
         Path    = $Installer
         Service = 'ScreenConnect Client'
-        URL     = 'https://dit.screenconnect.com/Bin/ScreenConnect.ClientSetup.msi?e=Access&y=Guest&c=Test&c=&c=&c=&c=&c=&c=&c='
+        URL     = $Config.RemoteToolURL
 
         # Installer Arguments
         MsiInstall = @(
@@ -1250,13 +1251,17 @@ switch ($true) {
 }
 
 if ($Config.RemoteTool -eq 'True') {
-    Write-Log -Header 'BACKUP REMOTE TOOL' -HeaderWidth '95'
+    if (-not $Config.RemoteToolURL) {
+        Write-Log -Fail 'RemoteToolURL is missing/invalid, must be passed when RemoteTool is set.'
+        exit 1
+    }
+    Write-Log -Header 'BACKUP REMOTE TOOL' -HeaderWidth '100'
     try {
         Write-Log -Info 'RemoteTool parameter switch declared, starting processs.'
         $ScreenConnectApp = & $ScreenConnect -Action 'install'
         Get-File -URL $ScreenConnectApp.URL -Path $ScreenConnectApp.Path
         $ScreenConnectApp | Invoke-AppInstaller
-        Write-Log -HeaderEnd -HeaderWidth '95'
+        Write-Log -HeaderEnd -HeaderWidth '100'
     } catch {
         Write-Log -Fail "ScreenConnect installation failed: $($_.Exception.Message)"
         exit 1
@@ -1264,7 +1269,7 @@ if ($Config.RemoteTool -eq 'True') {
 }
 
 if (-not $env:IS_CHILD_PROCESS -and $Config.Workflow) {
-    Write-Log -Header 'PROCESS ISOLATION CHECK' -HeaderWidth '95'
+    Write-Log -Header 'PROCESS ISOLATION CHECK' -HeaderWidth '100'
     Write-Host "[INFO] Starting $($Config.Name) $($Config.Workflow.ToLower()) procedure."
     Write-Host "[INFO] Process isolation required to complete $($Config.Name) $($Config.Workflow.ToLower())."
 
@@ -1278,7 +1283,7 @@ if (-not $env:IS_CHILD_PROCESS -and $Config.Workflow) {
     Write-Host "[INFO] $($Config.Name) $($Config.Workflow.ToLower()) may take up to 10 minutes to complete."
     Write-Host "[INFO] Refer to logfile for $($Config.Name) $($Config.Workflow.ToLower()) progress and results."
     Write-Host "[INFO] Logfile location: $LogFile"
-    Write-Log -HeaderEnd -HeaderWidth '95'
+    Write-Log -HeaderEnd -HeaderWidth '100'
     exit 0
 }
 
