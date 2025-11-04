@@ -908,22 +908,28 @@ function Test-ServicePath {
         [Parameter(Mandatory,ValueFromPipeline)]
         [PSCustomObject]$AppObject
     )
-
-    try {
-    $ActualPath = (
-        & sc.exe qc $($AppObject.Service) |
-        Select-String 'BINARY_PATH_NAME\s+:\s+(.+)'
-    ).Matches.Groups[1].Value.Trim('"')
-
+    
+    # Check service to return properties or capture stderr 
+    $Output = & sc.exe qc $($AppObject.Service) 2>&1    
+    
+    # Return stderr message
+    if ($LASTEXITCODE -ne 0) {
+        Write-Log -Warn "$Output"
+        return $false
+    }
+    
+    # Clean binary path name to prep for comparison
+    $ActualPath = ( $Output | Select-String 'BINARY_PATH_NAME\s+:\s+(.+)' ).Matches.Groups[1].Value.Trim('"')
+    
+    # Compare expected to actual service path
     if ($AppObject.SvcExe -eq $ActualPath) {
         Write-Log -Pass "Service path successfully validated."
+        return $true
     } else {
         Write-Log -Warn "Service path mismatch."
         Write-Log -Warn "Expected: $($AppObject.SvcExe)"
         Write-Log -Warn "Found: $ActualPath"
-        }
-    } catch {
-        Write-Log -Warn "Service path validation failed: $($_.Exception.Message)"
+        return $false
     }
 }
 
@@ -1420,10 +1426,24 @@ foreach ($Action in $Config.Action) {
                 Write-Log -Warn "Service path update/validation failed: $($_.Exception.Message)"
                 exit 1
             }
-            if ((Get-Service $NinjaApp.Service).Status -eq 'Running') {
+            # Check service exists and status, try to start if not running
+            try {
+                for ($i = 0; $i -lt 5; $i++) {
+                    if ((Get-Service $NinjaApp.Service -EA Stop).Status -eq 'Running') {
                         Write-Log -Pass "$($NinjaApp.Service) service is running."
-            } else {
-                Write-Log -Fail"$($NinjaApp.Service) service is not running."
+                        break
+                    }
+                    if ($i -lt 4) { Start-Service $NinjaApp.Service -EA SilentlyContinue ; Start-Sleep -Seconds 2 }
+                }
+                # Check if service is still not running
+                if ((Get-Service $NinjaApp.Service -EA Stop).Status -ne 'Running') {
+                    Write-Log -Fail "$($NinjaApp.Service) service is not running after 10 seconds."
+                    Write-Log -HeaderEnd
+                    exit 1
+                }
+            } catch {
+                Write-Log -Fail "$($_.Exception.Message)"
+                Write-Log -HeaderEnd
                 exit 1
             }
         }
