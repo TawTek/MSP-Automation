@@ -296,7 +296,8 @@ function Invoke-AppInstaller {
                 switch ($Process.ExitCode) {
                     0      { Write-Log -Pass "$Name $Action completed successfully." }
                     3010   { Write-Log -Pass "$Name $Action completed successfully (reboot required)." }
-                    default { Write-Log -Fail "$Name $Action failed with exit code $($Process.ExitCode)." ; exit 1 }
+                    default { Write-Log -Fail "$Name $Action failed with exit code $($Process.ExitCode)." ; 
+                             Write-Log -HeaderEnd ; exit 1 }
                 }
             }
         } catch {
@@ -1024,7 +1025,7 @@ C: Drive Free:    $(try { [math]::Round((Get-PSDrive C).Free / 1GB, 2) } catch {
 Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2) } catch { "N/A" }) GB
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 "@
-        Write-Host $SystemInfoContent -ForegroundColor "DarkGray"
+        Write-Host "`n$SystemInfoContent" -ForegroundColor "DarkGray"
         if (-not $script:LogfileFail) { $SystemInfoContent | Out-File -FilePath $LogPath -Encoding UTF8 }
         return
     }
@@ -1044,7 +1045,7 @@ Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).T
 
         $LeftPadding  = [math]::Floor($TotalPadding / 2)
         $RightPadding = $TotalPadding - $LeftPadding
-        $HeaderText = "`r`n$($Decoration * $LeftPadding)$TextWithSpaces$($Decoration * $RightPadding)"
+        $HeaderText = "`n$($Decoration * $LeftPadding)$TextWithSpaces$($Decoration * $RightPadding)"
 
         Write-Host $HeaderText -ForegroundColor "DarkGray"
         if (-not $script:LogfileFail) { $HeaderText | Out-File -FilePath $LogPath -Append -Encoding UTF8 }
@@ -1063,7 +1064,7 @@ Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).T
     if ($View) {
         Write-Host $Message
         try {
-            $Message | Out-File -FilePath $LogPath -Append -Encoding UTF8
+            if (-not $script:LogfileFail) { $Message | Out-File -FilePath $LogPath -Append -Encoding UTF8 }
         } catch {
             Write-Warning "Failed to write to log file: $($_.Exception.Message)"
         }
