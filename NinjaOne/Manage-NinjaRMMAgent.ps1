@@ -1082,12 +1082,13 @@ $LogFile = Join-Path -Path $DirTemp -ChildPath 'Log_DeployNinja.log'
 
 # Configuration for application deployment
 $Config  = @{
-    Action        = @()
-    Name          = 'NinjaRMM'
-    RemoteTool    = $env:remoteTool
-    RemoteToolURL = $env:remoteToolUrl
-    Workflow      = $env:workflow       # Set to 'Migration', 'Reinstallation', 'Installation', 'Uninstallation', or $null
-    TokenID       = $env:tokenId
+    Action           = @()
+    Name             = 'NinjaRMM'
+    RemoteTool       = $env:remoteTool
+    RemoteToolURL    = $env:remoteToolUrl
+    RemoteToolBypass = $env:remoteToolBypass
+    Workflow         = $env:workflow          # Set to 'Migration', 'Reinstallation', 'Installation', 'Uninstallation', or $null
+    TokenID          = $env:tokenId
 }
 
 #region ───────────────────────────────────────────── [ VAR.App ] ─────────────────────────────────────────────────────
@@ -1247,6 +1248,12 @@ switch ($true) {
     }
     { $WorkflowActions.ContainsKey($Config.Workflow) } {
         $Config.Action = $WorkflowActions[$Config.Workflow]
+    }
+}
+
+if (Config.Workflow -eq 'Migration' -or $Config.Workflow -eq 'Reinstallation') {
+    if ($Config.RemoteToolBypass -eq 'True') {
+        Write-Log -Info 'RemoteToolBypass parameter switch declared, skipping remote tool backup.'
     }
 }
 
