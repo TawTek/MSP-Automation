@@ -982,11 +982,11 @@ function Write-Log {
 
     # Handle logfile failure tracking and recovery
     switch ($true) {
-        { [string]::IsNullOrWhiteSpace($Logfile) -and -not $Script:LogfileFail } {
+        { [string]::IsNullOrWhiteSpace($LogPath) -and -not $Script:LogfileFail } {
             Write-Host "[WARN] Logfile creation failed, outputting to console only."
             $Script:LogfileFail = $true # Display logfile failure warning once
         }
-        { -not [string]::IsNullOrWhiteSpace($Logfile) -and $Script:LogfileFail } {
+        { -not [string]::IsNullOrWhiteSpace($LogPath) -and $Script:LogfileFail } {
             $Script:LogfileFail = $false  # Reset since logfile is now valid
         }
     }
@@ -1006,7 +1006,7 @@ Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).T
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 "@
         Write-Host $SystemInfoContent -ForegroundColor "DarkGray"
-        $SystemInfoContent | Out-File -FilePath $LogPath -Encoding UTF8
+        if (-not $script:LogfileFail) { $SystemInfoContent | Out-File -FilePath $LogPath -Encoding UTF8 }
         return
     }
 
@@ -1028,7 +1028,7 @@ Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).T
         $HeaderText = "`r`n$($Decoration * $LeftPadding)$TextWithSpaces$($Decoration * $RightPadding)"
 
         Write-Host $HeaderText -ForegroundColor "DarkGray"
-        $HeaderText | Out-File -FilePath $LogPath -Append -Encoding UTF8
+        if (-not $script:LogfileFail) { $HeaderText | Out-File -FilePath $LogPath -Append -Encoding UTF8 }
         return
     }
 
@@ -1036,7 +1036,7 @@ Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).T
     if ($HeaderEnd) {
         $FullLine = $Decoration * ($HeaderWidth - 1)
         Write-Host $FullLine -ForegroundColor "DarkGray"
-        $FullLine | Out-File -FilePath $LogPath -Append -Encoding UTF8
+        if (-not $script:LogfileFail) { $FullLine | Out-File -FilePath $LogPath -Append -Encoding UTF8 }
         return
     }
 
@@ -1100,7 +1100,7 @@ $Config  = @{
     RemoteTool       = $env:remoteTool
     RemoteToolURL    = $env:remoteToolUrl
     RemoteToolBypass = $env:remoteToolBypass
-    Workflow         = $env:workflow          # Set to 'Migration', 'Reinstallation', 'Installation', 'Uninstallation', or $null
+    Workflow         = $env:workflow # Set to 'Migration', 'Reinstallation', 'Installation', 'Uninstallation', or $null
     TokenID          = $env:tokenId
 }
 
@@ -1229,15 +1229,17 @@ $ScreenConnect = {
 
 if (Test-Path $DirTemp) {
     Write-Log -Header 'PREFLIGHT' -HeaderWidth '100'
-    Write-Log -Pass "Temp Directory: $DirTemp"
+    Write-Log -Pass "Temp directory exists: $DirTemp"
+    Write-Log -Pass "Logfile location: $LogFile"
 } else {
     try {
         Set-Dir -Path $DirTemp -Create -Silent
         Write-Log -Header 'PREFLIGHT' -HeaderWidth '100'
-        Write-Log -Pass "Temp Directory: $DirTemp"
+        Write-Log -Pass "Temp directory created: $DirTemp"
+        Write-Log -Pass "Logfile location: $LogFile"
     } catch {
-        Write-Host "[FAIL] Could not create temporary directory, terminating script."
-        Write-Host "[FAIL] Error: $($_.Exception.Message)"
+        Write-Log -Fail "Could not create temporary directory, terminating script."
+        Write-Log -Fail "Error: $($_.Exception.Message)"
         Write-Log -HeaderEnd -HeaderWidth '100'
         exit 1
     }
@@ -1254,26 +1256,26 @@ $WorkflowActions = @{
 # Dynamically assign actions based on workflow lookup and validate all required parameters
 switch ($true) {
     { $Config.Workflow -and -not $WorkflowActions.ContainsKey($Config.Workflow) } {
-        Write-Host "[FAIL] Invalid workflow: $($Config.Workflow)"
+        Write-Log -Fail "Invalid workflow: $($Config.Workflow)"
         Write-Log -HeaderEnd -HeaderWidth '100'
         exit 1
     }
     { $Config.Workflow -in @('Migration', 'Reinstallation', 'Installation') -and [string]::IsNullOrEmpty($Config.TokenID) } {
-        Write-Host "[FAIL] TokenID required for $($Config.Workflow)"
+        Write-Log -Fail "TokenID required for $($Config.Workflow)"
         Write-Log -HeaderEnd -HeaderWidth '100'
         exit 1
     }
     { -not $Config.Workflow -and $Config.Action.Count -eq 0 } {
-        Write-Host '[FAIL] Custom workflow requires actions'
+        Write-Log -Fail 'Custom workflow requires actions'
         Write-Log -HeaderEnd -HeaderWidth '100'
         exit 1
     }
-    { $WorkflowActions.ContainsKey($Config.Workflow) } {
+    { $Config.Workflow -and $WorkflowActions.ContainsKey($Config.Workflow) } {
         $Config.Action = $WorkflowActions[$Config.Workflow]
     }
 }
 
-if (Config.Workflow -eq 'Migration' -or $Config.Workflow -eq 'Reinstallation') {
+if ($Config.Workflow -in @('Migration', 'Reinstallation') -and $Config.RemoteTool -eq 'False') {
     if ($Config.RemoteToolBypass -eq 'True') {
         Write-Log -Info 'RemoteToolBypass parameter switch declared, skipping remote tool backup.'
     }
@@ -1298,8 +1300,8 @@ if ($Config.RemoteTool -eq 'True') {
 }
 
 if (-not $env:IS_CHILD_PROCESS -and $Config.Workflow) {
-    Write-Host "[INFO] Starting $($Config.Name) $($Config.Workflow.ToLower()) procedure."
-    Write-Host "[INFO] Process isolation required to complete $($Config.Name) $($Config.Workflow.ToLower())."
+    Write-Log -Info "Starting $($Config.Name) $($Config.Workflow.ToLower()) procedure."
+    Write-Log -Info "Process isolation required to complete $($Config.Name) $($Config.Workflow.ToLower())."
 
     # Set environment variable so child process knows it's already a child
     Start-Process -FilePath "powershell.exe" -ArgumentList @(
@@ -1307,20 +1309,23 @@ if (-not $env:IS_CHILD_PROCESS -and $Config.Workflow) {
         "-Command", "`$env:IS_CHILD_PROCESS='1'; & `"$PSCommandPath`""
     ) -WindowStyle Hidden
 
-    Write-Host "[PASS] $($Config.Name) $($Config.Workflow.ToLower()) handed off to child process, closing parent context."
-    Write-Host "[INFO] $($Config.Name) $($Config.Workflow.ToLower()) may take up to 10 minutes to complete."
-    Write-Host "[INFO] Refer to logfile for $($Config.Name) $($Config.Workflow.ToLower()) progress and results."
-    Write-Host "[INFO] Logfile location: $LogFile"
+    Write-Log -Pass "$($Config.Name) $($Config.Workflow.ToLower()) handed off to child process, closing parent context."
+    Write-Log -Info "$($Config.Name) $($Config.Workflow.ToLower()) may take up to 10 minutes to complete."
+    Write-Log -Info "Refer to logfile for $($Config.Name) $($Config.Workflow.ToLower()) progress and results."
+    Write-Log -Info "Logfile location: $LogFile"
     Write-Log -HeaderEnd -HeaderWidth '100'
     exit 0
 }
 
-Write-Log -SystemInfo
-Write-Log -Header 'PREFLIGHT'
-Write-Log -Info "$($Config.Name) $($Config.Workflow.ToLower()) is running in protected execution context (PID: $PID)."
-Write-Log -Pass "Temporary directory: $DirTemp"
-Write-Log -Pass "Logfile location: $LogFile"
-Write-Log -HeaderEnd
+Write-Log -HeaderEnd -HeaderWidth '100'
+
+if ($env:IS_CHILD_PROCESS) { 
+    Write-Log -SystemInfo
+    Write-Log -Header 'PREFLIGHT'
+    Write-Log -Pass "Temporary directory: $DirTemp"
+    Write-Log -Pass "Logfile location: $LogFile"
+    Write-Log -HeaderEnd
+}
 
 #endregion ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
