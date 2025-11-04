@@ -997,7 +997,7 @@ function Write-Log {
         # Log configuration
         [string]$LogPath = $LogFile,
         [string]$Decoration = "-",
-        [int]$HeaderWidth = 120
+        [int]$HeaderWidth = $(if ($NinjaConsole) { 100 } else { 120 })
     )
 
     # Handle logfile failure tracking and recovery
@@ -1110,8 +1110,9 @@ Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).T
 
 #region ═════════════════════════════════════════ { VARIABLE.GLOBAL } ═════════════════════════════════════════════════
 
-$DirTemp = 'C:\Temp'
-$LogFile = Join-Path -Path $DirTemp -ChildPath 'Log_DeployNinja.log'
+$DirTemp      = 'C:\Temp'
+$LogFile      = Join-Path -Path $DirTemp -ChildPath 'Log_DeployNinja.log'
+$NinjaConsole = $true
 
 # Configuration for application deployment
 $Config  = @{
@@ -1256,19 +1257,19 @@ switch ($true) {
 }
 
 if (Test-Path $DirTemp) {
-    Write-Log -Header 'PREFLIGHT' -HeaderWidth '100'
+    Write-Log -Header 'PREFLIGHT'
     Write-Log -Pass "Temp directory exists: $DirTemp"
     Write-Log -Pass "Logfile location: $LogFile"
 } else {
     try {
         Set-Dir -Path $DirTemp -Create -Silent
-        Write-Log -Header 'PREFLIGHT' -HeaderWidth '100'
+        Write-Log -Header 'PREFLIGHT'
         Write-Log -Pass "Temp directory created: $DirTemp"
         Write-Log -Pass "Logfile location: $LogFile"
     } catch {
         Write-Log -Fail "Could not create temporary directory, terminating script."
         Write-Log -Fail "Error: $($_.Exception.Message)"
-        Write-Log -HeaderEnd -HeaderWidth '100'
+        Write-Log -HeaderEnd
         exit 1
     }
 }
@@ -1285,17 +1286,17 @@ $WorkflowActions = @{
 switch ($true) {
     { $Config.Workflow -and -not $WorkflowActions.ContainsKey($Config.Workflow) } {
         Write-Log -Fail "Invalid workflow: $($Config.Workflow)"
-        Write-Log -HeaderEnd -HeaderWidth '100'
+        Write-Log -HeaderEnd
         exit 1
     }
     { $Config.Workflow -in @('Migration', 'Reinstallation', 'Installation') -and [string]::IsNullOrEmpty($Config.TokenID) } {
         Write-Log -Fail "TokenID required for $($Config.Workflow)"
-        Write-Log -HeaderEnd -HeaderWidth '100'
+        Write-Log -HeaderEnd
         exit 1
     }
     { -not $Config.Workflow -and $Config.Action.Count -eq 0 } {
         Write-Log -Fail 'Custom workflow requires actions'
-        Write-Log -HeaderEnd -HeaderWidth '100'
+        Write-Log -HeaderEnd
         exit 1
     }
     { $Config.Workflow -and $WorkflowActions.ContainsKey($Config.Workflow) } {
@@ -1308,7 +1309,7 @@ if ($Config.Workflow -in @('Migration', 'Reinstallation') -and $Config.RemoteToo
         Write-Log -Info 'RemoteToolBypass parameter switch declared, skipping remote tool backup.'
     } else {
         Write-Log -Fail "RemoteToolBypass must be set for $($Config.Workflow.tolower()) if remote tool is not required."
-        Write-Log -HeaderEnd -HeaderWidth '100'
+        Write-Log -HeaderEnd
         exit 1
     }
 }
@@ -1316,7 +1317,7 @@ if ($Config.Workflow -in @('Migration', 'Reinstallation') -and $Config.RemoteToo
 if ($Config.RemoteTool -eq 'True') {
     if (-not $Config.RemoteToolURL) {
         Write-Log -Fail 'RemoteToolURL is missing/invalid, must be passed when RemoteTool is set.'
-        Write-Log -HeaderEnd -HeaderWidth '100'
+        Write-Log -HeaderEnd
         exit 1
     }
     try {
@@ -1326,13 +1327,13 @@ if ($Config.RemoteTool -eq 'True') {
         $ScreenConnectApp | Invoke-AppInstaller
     } catch {
         Write-Log -Fail "ScreenConnect installation failed: $($_.Exception.Message)"
-        Write-Log -HeaderEnd -HeaderWidth '100'
+        Write-Log -HeaderEnd
         exit 1
     }
 } else {
     if ($Config.RemoteToolURL) {
         Write-Log -Fail 'RemoteToolURL set but RemoteTool has not been, check it then re-run.'
-        Write-Log -HeaderEnd -HeaderWidth '100'
+        Write-Log -HeaderEnd
         exit 1
     }
 }
@@ -1351,11 +1352,11 @@ if (-not $env:IS_CHILD_PROCESS -and $Config.Workflow) {
     Write-Log -Info "$($Config.Name) $($Config.Workflow.ToLower()) may take up to 10 minutes to complete."
     Write-Log -Info "Refer to logfile for $($Config.Name) $($Config.Workflow.ToLower()) progress and results."
     Write-Log -Info "Logfile location: $LogFile"
-    Write-Log -HeaderEnd -HeaderWidth '100'
+    Write-Log
     exit 0
 }
 
-Write-Log -HeaderEnd -HeaderWidth '100'
+Write-Log -HeaderEnd
 
 if ($env:IS_CHILD_PROCESS) { 
     Write-Log -SystemInfo
