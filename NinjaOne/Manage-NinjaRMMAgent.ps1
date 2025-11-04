@@ -980,6 +980,17 @@ function Write-Log {
         [int]$HeaderWidth = 120
     )
 
+    # Handle logfile failure tracking and recovery
+    switch ($true) {
+        { [string]::IsNullOrWhiteSpace($Logfile) -and -not $Script:LogfileFail } {
+            Write-Host "[WARN] Logfile creation failed, outputting to console only."
+            $Script:LogfileFail = $true # Display logfile failure warning once
+        }
+        { -not [string]::IsNullOrWhiteSpace($Logfile) -and $Script:LogfileFail } {
+            $Script:LogfileFail = $false  # Reset since logfile is now valid
+        }
+    }
+
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
     if ($SystemInfo) {
@@ -1065,10 +1076,12 @@ Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).T
 
     Write-Host $ConsoleOutput -ForegroundColor $ConsoleColor
 
-     try {
-        $FileOutput | Out-File -FilePath $LogPath -Append -Encoding UTF8
-    } catch {
-        Write-Warning "Failed to write to log file: $($_.Exception.Message)"
+    if (-not $script:LogfileFail) {
+        try {
+            $FileOutput | Out-File -FilePath $LogPath -Append -Encoding UTF8
+        } catch {
+            Write-Host "[FAIL] Failed to write to log file: $($_.Exception.Message)"
+        }
     }
 }
 
