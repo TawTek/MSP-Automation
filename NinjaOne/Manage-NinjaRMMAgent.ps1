@@ -1227,12 +1227,18 @@ $ScreenConnect = {
 
 #region ──────────────────────────────────────── [ SCRIPT.Preflight ] ─────────────────────────────────────────────────
 
-if (-not (Test-Path $DirTemp)) {
+if (Test-Path $DirTemp) {
+    Write-Log -Header 'PREFLIGHT' -HeaderWidth '100'
+    Write-Log -Pass "Temp Directory: $DirTemp"
+} else {
     try {
         Set-Dir -Path $DirTemp -Create -Silent
+        Write-Log -Header 'PREFLIGHT' -HeaderWidth '100'
+        Write-Log -Pass "Temp Directory: $DirTemp"
     } catch {
         Write-Host "[FAIL] Could not create temporary directory, terminating script."
         Write-Host "[FAIL] Error: $($_.Exception.Message)"
+        Write-Log -HeaderEnd -HeaderWidth '100'
         exit 1
     }
 }
@@ -1249,14 +1255,17 @@ $WorkflowActions = @{
 switch ($true) {
     { $Config.Workflow -and -not $WorkflowActions.ContainsKey($Config.Workflow) } {
         Write-Host "[FAIL] Invalid workflow: $($Config.Workflow)"
+        Write-Log -HeaderEnd -HeaderWidth '100'
         exit 1
     }
     { $Config.Workflow -in @('Migration', 'Reinstallation', 'Installation') -and [string]::IsNullOrEmpty($Config.TokenID) } {
         Write-Host "[FAIL] TokenID required for $($Config.Workflow)"
+        Write-Log -HeaderEnd -HeaderWidth '100'
         exit 1
     }
     { -not $Config.Workflow -and $Config.Action.Count -eq 0 } {
         Write-Host '[FAIL] Custom workflow requires actions'
+        Write-Log -HeaderEnd -HeaderWidth '100'
         exit 1
     }
     { $WorkflowActions.ContainsKey($Config.Workflow) } {
@@ -1273,23 +1282,22 @@ if (Config.Workflow -eq 'Migration' -or $Config.Workflow -eq 'Reinstallation') {
 if ($Config.RemoteTool -eq 'True') {
     if (-not $Config.RemoteToolURL) {
         Write-Log -Fail 'RemoteToolURL is missing/invalid, must be passed when RemoteTool is set.'
+        Write-Log -HeaderEnd -HeaderWidth '100'
         exit 1
     }
-    Write-Log -Header 'BACKUP REMOTE TOOL' -HeaderWidth '100'
     try {
         Write-Log -Info 'RemoteTool parameter switch declared, starting processs.'
         $ScreenConnectApp = & $ScreenConnect -Action 'install'
         Get-File -URL $ScreenConnectApp.URL -Path $ScreenConnectApp.Path
         $ScreenConnectApp | Invoke-AppInstaller
-        Write-Log -HeaderEnd -HeaderWidth '100'
     } catch {
         Write-Log -Fail "ScreenConnect installation failed: $($_.Exception.Message)"
+        Write-Log -HeaderEnd -HeaderWidth '100'
         exit 1
     }
 }
 
 if (-not $env:IS_CHILD_PROCESS -and $Config.Workflow) {
-    Write-Log -Header 'PROCESS ISOLATION CHECK' -HeaderWidth '100'
     Write-Host "[INFO] Starting $($Config.Name) $($Config.Workflow.ToLower()) procedure."
     Write-Host "[INFO] Process isolation required to complete $($Config.Name) $($Config.Workflow.ToLower())."
 
