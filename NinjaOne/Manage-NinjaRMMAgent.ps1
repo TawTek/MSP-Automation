@@ -1227,6 +1227,8 @@ $ScreenConnect = {
 
 #region ──────────────────────────────────────── [ SCRIPT.Preflight ] ─────────────────────────────────────────────────
 
+if ($Config.Workflow -and $Config.Workflow -notin @('Migration', 'Reinstallation')) { Write-Log -SystemInfo }
+
 if (Test-Path $DirTemp) {
     Write-Log -Header 'PREFLIGHT' -HeaderWidth '100'
     Write-Log -Pass "Temp directory exists: $DirTemp"
@@ -1278,6 +1280,10 @@ switch ($true) {
 if ($Config.Workflow -in @('Migration', 'Reinstallation') -and $Config.RemoteTool -eq 'False') {
     if ($Config.RemoteToolBypass -eq 'True') {
         Write-Log -Info 'RemoteToolBypass parameter switch declared, skipping remote tool backup.'
+    } else {
+        Write-Log -Fail "RemoteToolBypass must be set for $($Config.Workflow.tolower()) if remote tool is not required."
+        Write-Log -HeaderEnd -HeaderWidth '100'
+        exit 1
     }
 }
 
@@ -1294,6 +1300,12 @@ if ($Config.RemoteTool -eq 'True') {
         $ScreenConnectApp | Invoke-AppInstaller
     } catch {
         Write-Log -Fail "ScreenConnect installation failed: $($_.Exception.Message)"
+        Write-Log -HeaderEnd -HeaderWidth '100'
+        exit 1
+    }
+} else {
+    if ($Config.RemoteToolURL) {
+        Write-Log -Fail 'RemoteToolURL set but RemoteTool has not been, check it then re-run.'
         Write-Log -HeaderEnd -HeaderWidth '100'
         exit 1
     }
