@@ -901,7 +901,7 @@ function Test-ServicePath {
     - Success log entry when service path matches expected configuration.
     - Warning with path details when mismatch detected.
     - Error logging if service query fails to execute.
-    #>
+      #>
 
     [CmdletBinding()]
     param(
@@ -910,26 +910,32 @@ function Test-ServicePath {
     )
     
     # Check service to return properties or capture stderr 
-    $Output = & sc.exe qc $($AppObject.Service) 2>&1    
-    
+    $Output = & sc.exe qc $($AppObject.Service) 2>&1
+
     # Return stderr message
     if ($LASTEXITCODE -ne 0) {
         Write-Log -Warn "$Output"
-        return $false
+        return @{
+            Success    = $false
+            ActualPath = $null
+            Error      = $Output
+            ExitCode   = $LASTEXITCODE
+        }
     }
     
     # Clean binary path name to prep for comparison
     $ActualPath = ( $Output | Select-String 'BINARY_PATH_NAME\s+:\s+(.+)' ).Matches.Groups[1].Value.Trim('"')
     
-    # Compare expected to actual service path
     if ($AppObject.SvcExe -eq $ActualPath) {
-        Write-Log -Pass "Service path successfully validated."
-        return $true
+        return @{
+            Success    = $true
+            ActualPath = $ActualPath
+        }
     } else {
-        Write-Log -Warn "Service path mismatch."
-        Write-Log -Warn "Expected: $($AppObject.SvcExe)"
-        Write-Log -Warn "Found: $ActualPath"
-        return $false
+        return @{
+            Success    = $false
+            ActualPath = $ActualPath
+        }
     }
 }
 
@@ -1415,25 +1421,53 @@ foreach ($Action in $Config.Action) {
             Start-Sleep -Seconds 5
         }
         'Validate' {
-            # Update SvcExe property to full path and validate service binary
-            try {
-                $NinjaDir = $NinjaApp | Get-AppDirectory
-                $NinjaApp | Add-Member -MemberType NoteProperty -Name 'SvcExe' -Value (Join-Path $NinjaDir $NinjaApp.SvcExe ) -Force
-                Write-Log -Pass "Updated $($Config.Name) PSCustomObject's SvcExe property to full path."
-                Write-Log -Pass "$($NinjaApp.SvcExe)"
-                Test-ServicePath -AppObject $NinjaApp
-            } catch {
-                Write-Log -Warn "Service path update/validation failed: $($_.Exception.Message)"
+            # Check installation directory exists 
+            $NinjaDir = $NinjaApp | Get-AppDirectory
+            if ($NinjaDir) {
+                Write-Log -Pass "Located installation directory for validation."
+                Write-Log -Pass "$NinjaDir"
+            } else {
+                Write-Log -Fail "Could not locate installation directory for validation."
+                Write-Log -HeaderEnd
                 exit 1
             }
-            # Check service exists and status, try to start if not running
+            # Update SvcExe property to full path with current installation directory
+            try {
+                $NinjaApp | Add-Member -MemberType NoteProperty -Name 'SvcExe' -Value (Join-Path $NinjaDir $NinjaApp.SvcExe) -Force -EA Stop
+                Write-Log -Pass "Updated $($Config.Name) PSCustomObject's SvcExe property to full path."
+                Write-Log -Pass "$($NinjaApp.SvcExe)"
+            } catch {
+                Write-Log -Fail "$($_.Exception.Message)"
+                Write-Log -HeaderEnd
+                exit 1
+            }
+            # Compare current service path with expected service path
+            $SvcPathTest = Test-ServicePath -AppObject $NinjaApp
+            if ($SvcPathTest.Success) {
+                Write-Log -Pass "Service path validation successful."
+                Write-Log -Pass "$($SvcPathTest.ActualPath)"
+            } else {
+                if ($SvcPathTest.Error) {
+                    Write-Log -Fail "Service query failed: $($SvcPathTest.Error)"
+                } else {
+                    Write-Log -Fail "Service path mismatch."
+                    Write-Log -Fail "Expected: $($NinjaApp.SvcExe)"
+                    Write-Log -Fail "Found: $($SvcPathTest.ActualPath)"
+                }
+                Write-Log -HeaderEnd
+                exit 1
+            }
+            # Check service exists and status, try to start if not running 5 times (10 seconds)
             try {
                 for ($i = 0; $i -lt 5; $i++) {
                     if ((Get-Service $NinjaApp.Service -EA Stop).Status -eq 'Running') {
                         Write-Log -Pass "$($NinjaApp.Service) service is running."
                         break
                     }
-                    if ($i -lt 4) { Start-Service $NinjaApp.Service -EA SilentlyContinue ; Start-Sleep -Seconds 2 }
+                    if ($i -lt 4) {
+                        Start-Service $NinjaApp.Service -EA SilentlyContinue
+                        Start-Sleep -Seconds 2
+                    }
                 }
                 # Check if service is still not running
                 if ((Get-Service $NinjaApp.Service -EA Stop).Status -ne 'Running') {
