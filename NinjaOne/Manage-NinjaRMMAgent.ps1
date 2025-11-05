@@ -633,6 +633,7 @@ function Get-AppDirectory {
     )
 
     process {
+        
         # Use RegPathExact from the object for discovery
         if ($AppObject.RegPathExact) {
             $RegistryKeys = $AppObject.RegPathExact
@@ -645,20 +646,21 @@ function Get-AppDirectory {
             )
         }
 
+        # Registry-based discovery
         foreach ($RegKey in $RegistryKeys) {
             if (Test-Path $RegKey) {
-
+                # Common registry property names that may contain installation paths
                 $LocationProperties = @('InstallLocation', 'Location', 'InstallDir', 'Path', 'BaseDir')
-
+                # Check each potential location property for a valid installation path
                 foreach ($Property in $LocationProperties) {
-                    try {
-                        $RegValue = Get-ItemPropertyValue -Path $RegKey -Name $Property -EA SilentlyContinue
-                        if ($RegValue -and (Test-Path (Join-Path $RegValue $AppObject.AgentExe))) {
-                            $CleanPath = $RegValue.Replace('/', '\').TrimEnd('\')
-                            Write-Log -Pass "Found directory via registry ($Property)."
-                            return $CleanPath
+                    $RegValue = Get-ItemPropertyValue -Path $RegKey -Name $Property -EA SilentlyContinue
+                    if ($RegValue -and (Test-Path (Join-Path $RegValue $AppObject.AgentExe))) {
+                        $CleanPath = $RegValue.Replace('/', '\').TrimEnd('\')
+                        return @{
+                            Success = $true
+                            Path    = $CleanPath
                         }
-                    } catch {}
+                    }
                 }
             }
         }
@@ -672,13 +674,18 @@ function Get-AppDirectory {
                 $ServiceDir = Split-Path $ServicePath -Parent
                 if (Test-Path (Join-Path $ServiceDir $AppObject.AgentExe)) {
                     $CleanPath = $ServiceDir.Replace('/', '\')
-                    Write-Log -Pass "Found directory via service."
-                    return $CleanPath
+                    return  @{
+                        Success = $true
+                        Path    = $CleanPath
+                    }
                 }
             }
+        } else {
+            return  @{
+                Success = $false
+                Path    = $null
+            }
         }
-        Write-Log -Info "Unable to locate directory for $($AppObject.Name)"
-        return $null
     }
 }
 
@@ -1368,7 +1375,6 @@ if (-not $env:IS_CHILD_PROCESS -and $Config.Workflow) {
     Write-Log -Pass "$($Config.Name) $($Config.Workflow.ToLower()) handed off to child process, closing parent context."
     Write-Log -Info "$($Config.Name) $($Config.Workflow.ToLower()) may take up to 10 minutes to complete."
     Write-Log -Info "Refer to logfile for $($Config.Name) $($Config.Workflow.ToLower()) progress and results."
-    Write-Log -Info "Logfile location: $LogFile"
     Write-Log -HeaderEnd
     exit 0
 }
@@ -1392,19 +1398,25 @@ foreach ($Action in $Config.Action) {
     switch ($Action) {
         'Initialize' {
             # Initialize app object
-            try {
-                $NinjaApp = & $NinjaRMM -Action 'Initialize'
+            $NinjaApp = & $NinjaRMM -Action 'Initialize'
+            if ($NinjaApp) {
                 Write-Log -Pass "$($Config.Name) PSCustomObject initialized."
-            } catch {
-                Write-Log -Fail "Could not initilize $($Config.Name) PSCustomObject, terminating script."
+            } else {
+                Write-Log -Fail "Could not initialize $($Config.Name) PSCustomObject"
                 Write-Log -HeaderEnd
                 exit 1
             }
             # If 'Cleanup' action is defined, discover program folder dynamically and add to CleanupDirectories
             if ('Cleanup' -in $Config.Action) {
-                Write-Log -Info "Locating installation directory."
-                $NinjaApp.CleanupDirectories += ($NinjaApp | Get-AppDirectory)
-                Write-Log -Pass "$($NinjaApp.CleanupDirectories)"
+                $NinjaDir = $NinjaApp | Get-AppDirectory
+                if ($NinjaDir.Success) {
+                    Write-Log -Info 'Locating installation directory for uninstall cleanup.'
+                    $NinjaApp.CleanupDirectories += $NinjaDir.Path
+                    Write-Log -Pass 'Added installation directory to "CleanupDirectories".'
+                    Write-Log -Pass "$($NinjaApp.CleanupDirectories)"
+                } else {
+                    Write-Log -Warn 'Could not locate installation directory for uninstall cleanup.'
+                }
             }
             Write-Log -Info "Downloading $($Config.Name) installer."
             Get-File -URL $NinjaApp.URL -Path $NinjaApp.Path
@@ -1425,7 +1437,7 @@ foreach ($Action in $Config.Action) {
             $NinjaDir = $NinjaApp | Get-AppDirectory
             if ($NinjaDir) {
                 Write-Log -Pass "Located installation directory for validation."
-                Write-Log -Pass "$NinjaDir"
+                Write-Log -Pass "$($NinjaDir.Path)"
             } else {
                 Write-Log -Fail "Could not locate installation directory for validation."
                 Write-Log -HeaderEnd
@@ -1433,7 +1445,7 @@ foreach ($Action in $Config.Action) {
             }
             # Update SvcExe property to full path with current installation directory
             try {
-                $NinjaApp | Add-Member -MemberType NoteProperty -Name 'SvcExe' -Value (Join-Path $NinjaDir $NinjaApp.SvcExe) -Force -EA Stop
+                $NinjaApp | Add-Member -MemberType NoteProperty -Name 'SvcExe' -Value (Join-Path $NinjaDir.Path $NinjaApp.SvcExe) -Force -EA Stop
                 Write-Log -Pass "Updated $($Config.Name) PSCustomObject's SvcExe property to full path."
                 Write-Log -Pass "$($NinjaApp.SvcExe)"
             } catch {
