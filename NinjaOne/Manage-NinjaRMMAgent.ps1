@@ -1004,7 +1004,7 @@ function Write-Log {
         [Parameter(ParameterSetName = "HeaderEnd")][switch]$HeaderEnd,
         [Parameter(ParameterSetName = "SystemInfo")][switch]$SystemInfo,
 
-        # Message parameter with multiple parameter sets
+        # Message parameter
         [Parameter(Position = 0, ParameterSetName = "Info")]
         [Parameter(Position = 0, ParameterSetName = "Pass")]
         [Parameter(Position = 0, ParameterSetName = "Warn")]
@@ -1014,32 +1014,38 @@ function Write-Log {
         [string]$Message,
 
         # Log configuration
-        [string]$LogPath = $LogFile,
-        [string]$Decoration = "-",
-        [int]$HeaderWidth = $(if ($NinjaConsole) { 107 } else { 120 })
+        [string]$LogPath    = $LogFile,
+        [string]$Decoration = "─",
+        [int]$HeaderWidth   = $(if ($NinjaConsole) { $NinjaConsole } else { 120 })
     )
-
-    # Handle logfile failure tracking and recovery
-    switch ($true) {
-        { [string]::IsNullOrWhiteSpace($LogPath) -and -not $Script:LogfileFail } {
-            Write-Host "[WARN] Logfile creation failed, outputting to console only."
-            $Script:LogfileFail = $true # Display logfile failure warning once
-        }
-        { -not [string]::IsNullOrWhiteSpace($LogPath) -and $Script:LogfileFail } {
-            $Script:LogfileFail = $false  # Reset since logfile is now valid
-        }
-    }
 
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
-    if ($SystemInfo) {
-    $title = "SYSTEM INFORMATION"  # No spaces - 19 characters
-    $sideLength = [math]::Floor((($HeaderWidth - 1) - ($title.Length + 2)) / 2)  # -1 for VSCode, +2 for spaces
-    $topLine = ('>' * $sideLength) + " $title " + ('<' * $sideLength)
-    $bottomLine = '>' * ($HeaderWidth - 1)  # Subtract 1 for VSCode
+    # Handle logfile failure tracking and recovery
+    if ([string]::IsNullOrWhiteSpace($LogPath) -and -not $Script:LogfileFail) {
+        Write-Host "[WARN] Logfile creation failed, outputting to console only."
+        $Script:LogfileFail = $true
+    }
 
-    $SystemInfoContent = @"
-$topLine
+    # Reset flag if logpath becomes valid again
+    if (-not [string]::IsNullOrWhiteSpace($LogPath) -and $Script:LogfileFail) {
+        $Script:LogfileFail = $false
+    }
+
+    if ($SystemInfo) {
+        $Title           = "SYSTEM INFORMATION"
+        $TitleWithSpaces = " $Title "
+        $AvailableWidth  = $HeaderWidth - 1
+        
+        $TotalPadding = $AvailableWidth - $TitleWithSpaces.Length
+        $LeftPadding  = [math]::Floor($TotalPadding / 2)
+        $RightPadding = $TotalPadding - $LeftPadding
+        
+        $TopLine    = ('═' * $LeftPadding) + $TitleWithSpaces + ('═' * $RightPadding)
+        $BottomLine = '═' * $AvailableWidth
+    
+        $SystemInfoContent = @"
+$TopLine
 Execution Time:   $($TimeStamp)
 Executed By:      $($env:USERDOMAIN)\$($env:USERNAME)
 Host Computer:    $($env:COMPUTERNAME)
@@ -1047,11 +1053,11 @@ PS Version:       $($PSVersionTable.PSVersion)
 Process ID:       $PID
 C: Drive Free:    $(try { [math]::Round((Get-PSDrive C).Free / 1GB, 2) } catch { "N/A" }) GB
 Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2) } catch { "N/A" }) GB
-$bottomLine
+$BottomLine
 "@
-    Write-Host "`n$SystemInfoContent" -ForegroundColor "DarkGray"
-    if (-not $script:LogfileFail) { $SystemInfoContent | Out-File -FilePath $LogPath -Encoding UTF8 }
-    return
+        Write-Host "`n$SystemInfoContent" -ForegroundColor "DarkGray"
+        if (-not $script:LogfileFail) { $SystemInfoContent | Out-File -FilePath $LogPath -Encoding UTF8 }
+        return
     }
 
     if ($Header) {
@@ -1069,7 +1075,7 @@ $bottomLine
 
         $LeftPadding  = [math]::Floor($TotalPadding / 2)
         $RightPadding = $TotalPadding - $LeftPadding
-        $HeaderText = "`n$($Decoration * $LeftPadding)$TextWithSpaces$($Decoration * $RightPadding)"
+        $HeaderText   = "`n$($Decoration * $LeftPadding)$TextWithSpaces$($Decoration * $RightPadding)"
 
         Write-Host $HeaderText -ForegroundColor "DarkGray"
         if (-not $script:LogfileFail) { $HeaderText | Out-File -FilePath $LogPath -Append -Encoding UTF8 }
@@ -1099,19 +1105,19 @@ $bottomLine
     switch ($PSCmdlet.ParameterSetName) {
         "Info" {
             $ConsoleColor = "White"
-            $FilePrefix = "[INFO]"
+            $FilePrefix   = "[INFO]"
         }
         "Pass" {
             $ConsoleColor = "DarkCyan"
-            $FilePrefix = "[PASS]"
+            $FilePrefix   = "[PASS]"
         }
         "Warn" {
             $ConsoleColor = "Yellow"
-            $FilePrefix = "[WARN]"
+            $FilePrefix   = "[WARN]"
         }
         "Fail" {
             $ConsoleColor = "Red"
-            $FilePrefix = "[FAIL]"
+            $FilePrefix   = "[FAIL]"
         }
     }
 
