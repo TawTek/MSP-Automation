@@ -168,17 +168,6 @@ $BottomLine
         return
     }
 
-    # Handle Display parameter to write to console and log file without prefix
-    if ($View) {
-        Write-Host $Message
-        try {
-            if (-not $script:LogfileFail) { $Message | Out-File -FilePath $LogPath -Append -Encoding UTF8 }
-        } catch {
-            Write-Warning "Failed to write to log file: $($_.Exception.Message)"
-        }
-        return
-    }
-
     # Define icons once (outside the switch)
     $icons = @{
         Info = "🛈"
@@ -225,13 +214,12 @@ $BottomLine
     $FileIconPrefix = if ($script:Log_ShowIconsInFile) { "$FilePrefix $IconChar " } else { "$FilePrefix " }
     $FileOutput = "$Timestamp $FileIconPrefix$Message"
 
-    # Only show Step messages in console if $script:Step is $true
-    if ($PSCmdlet.ParameterSetName -eq "Step" -and -not ($script:Log_ShowSteps)) {
-    } else {
+    # Only show Step messages in console if parameter is not "Step" or $script:Log_ShowSteps is $true
+    if ($PSCmdlet.ParameterSetName -ne "Step" -or $script:Log_ShowSteps) {
         Write-Host $ConsoleOutput -ForegroundColor $ConsoleColor
     }
 
-    if (-not $script:LogfileFail) {
+    if (-not $script:LogfileFail -and $View -ne $true) {
         try {
             $FileOutput | Out-File -FilePath $LogPath -Append -Encoding UTF8
         } catch {
