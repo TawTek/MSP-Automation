@@ -6,6 +6,15 @@
 <meta name="ProgId" content="SharePoint.WebPartPage.Document">
 <meta name="WebPartPageExpansion" content="full">
 <title>NOC Maintenance Notification Formatter</title>
+<script>
+  // Apply theme immediately to prevent flash
+  (function() {
+    const savedTheme = localStorage.getItem('noc-theme') || 'amoled';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    // Add js-loaded class to enable form group visibility
+    document.body.classList.add('js-loaded');
+  })();
+</script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
   @import url('https://unpkg.com/lucide-static@0.321.0/font/lucide.css');
@@ -180,6 +189,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 32px;
+    align-items: start;
   }
 
   /* Custom Reason Container */
@@ -258,9 +268,9 @@
     border: 1px solid #1e293b;
     border-radius: 4px;
     margin-top: 4px;
-    max-height: 200px;
+    max-height: 180px; /* 5 items * 36px each */
     overflow-y: auto;
-    z-index: 10;
+    z-index: 1000;
     display: none;
     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     opacity: 0;
@@ -416,8 +426,9 @@
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 8px;
-    overflow: hidden;
-    height: 750px;
+    overflow: visible;
+    min-height: fit-content;
+    height: fit-content;
     display: flex;
     flex-direction: column;
   }
@@ -455,9 +466,9 @@
   }
 
   .form-content {
-    padding: 20px 20px 0;
+    padding: 20px 20px 20px;
     flex: 1;
-    overflow-y: auto;
+    overflow: visible;
   }
 
   /* Toggle switch - New design */
@@ -525,11 +536,26 @@
   .toggle-option.active {
     color: var(--bg);
     background: var(--primary);
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
   }
 
   .toggle-option:not(.active):hover {
     color: var(--text);
     z-index: 3;
+  }
+
+  /* Bevel effect for toggle container */
+  .toggle-options {
+    display: flex;
+    background: var(--border);
+    border-radius: 6px;
+    padding: 2px;
+    position: relative;
+    box-shadow: 
+      inset 0 1px 2px rgba(0, 0, 0, 0.3),
+      inset 0 -1px 2px rgba(255, 255, 255, 0.1);
   }
 
   .toggle-slider {
@@ -542,6 +568,7 @@
     border-radius: 4px;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     z-index: 1;
+    border: 1px solid transparent;
   }
 
   .toggle-slider.reboot {
@@ -637,6 +664,16 @@
     margin-bottom: 20px;
   }
 
+  /* Hide form groups initially (all except template selector) */
+  .form-content .form-group:not(:nth-of-type(2)) {
+    display: none;
+  }
+
+  /* Show form groups when JavaScript loads */
+  .js-loaded .form-content .form-group:not(:nth-of-type(2)) {
+    display: block;
+  }
+
   .form-label {
     display: block;
     font-family: 'JetBrains Mono', monospace;
@@ -647,11 +684,7 @@
     margin-bottom: 8px;
   }
 
-  .form-label.required::after {
-    content: ' *';
-    color: var(--danger);
-  }
-
+  
   .form-input, .form-textarea {
     width: 100%;
     background: var(--bg);
@@ -935,9 +968,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--muted);
-    font-style: italic;
+    color: #94a3b8;
+    font-weight: 600;
+    font-style: normal;
     text-align: center;
+  }
+
+  .subject-content.empty {
+    color: #94a3b8 !important;
   }
 
   .subject-preview {
@@ -955,7 +993,7 @@
     color: #cbd5e1;
     padding: 12px;
     background: var(--bg);
-    border: 1px solid var(--border);
+    border: none;
     border-radius: 4px;
     margin-bottom: 12px;
   }
@@ -1478,18 +1516,25 @@
               <i data-lucide="chevron-right" class="dropdown-arrow"></i>
             </div>
             <div class="dropdown-options-custom" id="customDropdownOptions">
-              <div class="dropdown-option-custom" data-value="" onclick="selectDropdownOption(this)">SELECT</div>
+              <!-- Options will be populated by JavaScript -->
             </div>
           </div>
           <div id="customReasonContainer" class="custom-reason-container" style="display: none;">
-            <textarea id="customReason" class="form-textarea" placeholder="Enter your custom message..."></textarea>
+            <div class="form-group">
+              <label class="form-label" for="customSubject">Subject Line</label>
+              <textarea id="customSubject" class="form-textarea" placeholder="Enter custom subject line..." rows="2"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="customReason">Custom Message</label>
+              <textarea id="customReason" class="form-textarea" placeholder="Enter your custom message..."></textarea>
+            </div>
           </div>
         </div>
 
-        <!-- System Name -->
-        <div class="form-group">
-          <label class="form-label required" for="systemName">System Name(s)</label>
-          <textarea id="systemName" class="form-textarea" placeholder="Enter system name(s) one per line&#10;DITAT1DEV01&#10;DITAT1DEV02&#10;DITAT1DEV03" runat="server"></textarea>
+        <!-- Client Code -->
+        <div class="form-group" id="clientCodeGroup" style="display: none;">
+          <label class="form-label required" for="clientCode">Client Code</label>
+          <input type="text" id="clientCode" class="form-input" placeholder="Enter client code..." oninput="this.value = this.value.toUpperCase();">
         </div>
 
         <!-- Starting Time -->
@@ -1533,6 +1578,18 @@
           <label class="form-label required" for="impact">Impact</label>
           <textarea id="impact" class="form-textarea" placeholder="Describe what will be unavailable..."></textarea>
         </div>
+
+        <!-- System Name -->
+        <div class="form-group">
+          <label class="form-label required" for="systemName">Device(s)</label>
+          <textarea id="systemName" class="form-textarea" placeholder="Enter device name(s) one per line&#10;DITAT1DEV01&#10;DITAT1DEV02&#10;DITAT1DEV03" runat="server"></textarea>
+        </div>
+
+        <!-- Additional Info -->
+        <div class="form-group" id="additionalInfoGroup">
+          <label class="form-label" for="additionalInfo">Additional Info</label>
+          <textarea id="additionalInfo" class="form-textarea" placeholder="Enter any additional information..."></textarea>
+        </div>
       </div>
     </section>
 
@@ -1545,7 +1602,7 @@
         <div class="section-title">Subject Line</div>
       </div>
       <div id="subjectPreview" class="subject-preview">
-        <div class="subject-content" contenteditable="false">{Subject}</div>
+        <div class="subject-content" contenteditable="false"></div>
         <div class="subject-actions">
           <button class="btn btn-primary" onclick="copySubjectToClipboard()">
             <i data-lucide="copy"></i> COPY
@@ -1564,7 +1621,6 @@
         <div class="section-title">Message Body</div>
       </div>
       <div id="previewContent" class="preview-content empty" contenteditable="false">
-        {Message}
       </div>
       <div class="preview-actions">
         <button class="btn btn-primary" onclick="copyToClipboard()">
@@ -1587,12 +1643,39 @@
       initializeForm();
       setupEventListeners();
       setDefaultTimes();
+      
+      // Hide all form groups except the Template selector (index 0)
+      const formContent = document.querySelector('.form-content');
+      const allFormGroups = formContent.querySelectorAll('.form-group');
+      
+      allFormGroups.forEach((group, index) => {
+        // Keep the Template group visible (index 0), hide others
+        if (index >= 1) {
+          group.style.display = 'none';
+        }
+      });
+      
+      // Hide special containers
+      const customContainer = document.getElementById('customReasonContainer');
+      const additionalInfoGroup = document.getElementById('additionalInfoGroup');
+      const clientCodeGroup = document.getElementById('clientCodeGroup');
+      
+      if (customContainer) customContainer.style.display = 'none';
+      if (additionalInfoGroup) additionalInfoGroup.style.display = 'none';
+      if (clientCodeGroup) clientCodeGroup.style.display = 'none';
+      
+      // Set template to SELECT
+      const selectedReason = document.getElementById('selectedReason');
+      if (selectedReason) {
+        selectedReason.textContent = 'SELECT';
+      }
+      
       updatePreview();
     });
 
     function initializeForm() {
-      // Initialize theme from localStorage
-      const savedTheme = localStorage.getItem('noc-theme') || 'coding';
+      // Initialize theme from localStorage with AMOLED as default
+      const savedTheme = localStorage.getItem('noc-theme') || 'amoled';
       document.documentElement.setAttribute('data-theme', savedTheme);
       updateThemeToggle(savedTheme);
       
@@ -1602,7 +1685,7 @@
 
     function setupEventListeners() {
       // Form input listeners
-      const inputs = ['systemName', 'startTime', 'durationHours', 'durationMinutes', 'impact'];
+      const inputs = ['systemName', 'startTime', 'durationHours', 'durationMinutes', 'impact', 'additionalInfo', 'clientCode'];
       inputs.forEach(id => {
         const element = document.getElementById(id);
         element.addEventListener('input', updatePreview);
@@ -1611,6 +1694,7 @@
 
       // Custom reason input listener
       document.getElementById('customReason').addEventListener('input', updatePreview);
+      document.getElementById('customSubject').addEventListener('input', updatePreview);
 
       // Initialize reason options
       updateReasonOptions();
@@ -1656,24 +1740,45 @@
       }
     }
 
-    function selectDropdownOption(element) {
+function selectDropdownOption(element) {
       const value = element.getAttribute('data-value');
       const text = element.textContent;
       const selectedReason = document.getElementById('selectedReason');
       const customContainer = document.getElementById('customReasonContainer');
       const customTextarea = document.getElementById('customReason');
+      const customSubject = document.getElementById('customSubject');
+      const additionalInfoGroup = document.getElementById('additionalInfoGroup');
+      const clientCodeGroup = document.getElementById('clientCodeGroup');
       
       // Update selected display
       selectedReason.textContent = text;
       
-      // Handle "Other" selection
+      // Get all form groups in the form-content area
+      const formContent = document.querySelector('.form-content');
+      const allFormGroups = formContent.querySelectorAll('.form-group');
+      
+      // Show all form groups first (since no SELECT option exists)
+      allFormGroups.forEach(group => {
+        group.style.display = 'block';
+      });
+      
+      // Then apply template-specific visibility
       if (value === 'Other (type custom reason)') {
         customContainer.style.display = 'block';
-        customTextarea.value = '';
-        customTextarea.focus();
+        additionalInfoGroup.style.display = 'none';
+        clientCodeGroup.style.display = 'none';
+      } else if (value.includes('Server has a 30+ day uptime')) {
+        customContainer.style.display = 'none';
+        additionalInfoGroup.style.display = 'none';
+        clientCodeGroup.style.display = 'block';
+      } else if (value.includes('Expected/Scheduled maintenance window')) {
+        customContainer.style.display = 'none';
+        additionalInfoGroup.style.display = 'block';
+        clientCodeGroup.style.display = 'block';
       } else {
         customContainer.style.display = 'none';
-        customTextarea.value = '';
+        additionalInfoGroup.style.display = 'none';
+        clientCodeGroup.style.display = 'none';
       }
       
       // Update selection state
@@ -1692,6 +1797,13 @@
     }
 
     function openDateTimePicker(inputId) {
+      // Check if a template is selected
+      const selectedReason = document.getElementById('selectedReason');
+      if (!selectedReason || selectedReason.textContent === 'SELECT') {
+        showFeedback('Please select a template first!', 'error');
+        return;
+      }
+      
       const input = document.getElementById(inputId);
       
       // Create a calendar modal
@@ -1875,22 +1987,15 @@
       const optionsContainer = document.getElementById('customDropdownOptions');
       const isReboot = document.getElementById('maintenanceType').value === 'true';
       
-      // Clear existing options (don't add SELECT option)
+      // Clear existing options
       optionsContainer.innerHTML = '';
       
-      // Add template options based on maintenance type
+      // Add template options based on maintenance type (NO SELECT option in dropdown)
       const options = isReboot ? [
-        { value: 'Server has a 30+ day uptime, need to reboot to ensure patching and maintenance is current', text: 'Uptime > 30 Days (Template)' },
+        { value: 'Server has a 30+ day uptime, need to reboot to ensure patching and maintenance is current', text: 'Uptime > 30 Days' },
         { value: 'Other (type custom reason)', text: 'Custom Message' }
       ] : [
         { value: 'Expected/Scheduled maintenance window', text: 'Scheduled Maintenance' },
-        { value: 'Critical security update deployment', text: 'Security Update' },
-        { value: 'Hardware replacement requiring downtime', text: 'Hardware Replacement' },
-        { value: 'Database maintenance and optimization', text: 'Database Maintenance' },
-        { value: 'Network infrastructure upgrade', text: 'Network Upgrade' },
-        { value: 'Power maintenance and UPS testing', text: 'Power Maintenance' },
-        { value: 'Emergency system patching', text: 'Emergency Patching' },
-        { value: 'Data center cooling system maintenance', text: 'Cooling System Maintenance' },
         { value: 'Other (type custom reason)', text: 'Custom Message' }
       ];
       
@@ -1948,6 +2053,36 @@
       
       // Update reason dropdown options
       updateReasonOptions();
+      
+      // Clear form and reset to SELECT state
+      clearForm();
+      
+      // Reset to SELECT state and hide all fields except template
+      const formContent = document.querySelector('.form-content');
+      const allFormGroups = formContent.querySelectorAll('.form-group');
+      
+      allFormGroups.forEach((group, index) => {
+        // Keep the Template group visible (index 0), hide others
+        if (index >= 1) {
+          group.style.display = 'none';
+        }
+      });
+      
+      // Hide special containers
+      const customContainer = document.getElementById('customReasonContainer');
+      const additionalInfoGroup = document.getElementById('additionalInfoGroup');
+      const clientCodeGroup = document.getElementById('clientCodeGroup');
+      
+      if (customContainer) customContainer.style.display = 'none';
+      if (additionalInfoGroup) additionalInfoGroup.style.display = 'none';
+      if (clientCodeGroup) clientCodeGroup.style.display = 'none';
+      
+      // Set template to SELECT
+      const selectedReason = document.getElementById('selectedReason');
+      if (selectedReason) {
+        selectedReason.textContent = 'SELECT';
+      }
+      
       updatePreview();
     }
 
@@ -1988,6 +2123,7 @@
         durationHours: data.durationHours || '',
         durationMinutes: data.durationMinutes || '',
         impact: data.impact || '',
+        additionalInfo: data.additionalInfo || '',
         isReboot: data.isReboot
       };
 
@@ -2011,6 +2147,12 @@
         }
       }
       
+      // Get additional info value with debugging
+      const additionalInfoField = document.getElementById('additionalInfo');
+      console.log('Additional Info Field:', additionalInfoField); // Debug field itself
+      console.log('Field Value:', additionalInfoField ? additionalInfoField.value : 'Field not found'); // Debug field value
+      console.log('Field Disabled:', additionalInfoField ? additionalInfoField.disabled : 'Field not found'); // Debug field state
+      
       const data = {
         systemName: document.getElementById('systemName').value.trim().toUpperCase(),
         reason: reasonValue,
@@ -2018,15 +2160,19 @@
         durationHours: document.getElementById('durationHours').value,
         durationMinutes: document.getElementById('durationMinutes').value,
         impact: document.getElementById('impact').value.trim(),
+        additionalInfo: additionalInfoField ? additionalInfoField.value.trim() : '',
+        clientCode: document.getElementById('clientCode').value.trim().toUpperCase(),
         isReboot: document.getElementById('maintenanceType').value === 'true'
       };
+      
+      console.log('Collected data:', data); // Debug log
 
       // Remove duration from data - will be calculated automatically
       delete data.duration;
 
       // Check if form is empty or template is SELECT
       const templateSelected = document.getElementById('selectedReason').textContent !== 'SELECT';
-      const hasContent = data.systemName || data.reason || data.startTime || data.impact;
+      const hasContent = data.systemName || data.reason || data.startTime || data.impact || data.additionalInfo;
       
       if (!templateSelected && !hasContent) {
         const preview = document.getElementById('previewContent');
@@ -2089,51 +2235,133 @@
           const systemNames = data.systemName.split('\n').filter(name => name.trim());
           const formattedStart = formatDate(data.startTime);
           
-          html += `<div class="subject"><strong>Reboot Scheduled</strong></div>`;
+          html += `<div class="subject"><strong>Time | Duration</strong></div>`;
           html += `<div class="section-content">`;
           html += `Start Time: <span style="color: #cbd5e1;">${formattedStart}</span><br>`;
           html += `Duration: <span style="color: #94a3b8;">${duration}</span>`;
-          html += `<hr style="border: none; border-top: 1px solid var(--border); margin: 16px 0 8px 0;">`;
           html += `</div>`;
           
+          // Add impact section if provided
+          if (data.impact) {
+            html += `<div class="subject"><strong>Environment Impact</strong></div>`;
+            html += `<div class="section-content">${data.impact.replace(/\n/g, '<br>')}</div>`;
+            html += `<div style="color: #64748b; font-size: 12px; margin: 16px 0 8px 0;">∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷</div>`;
+          } else {
+            // Add decorative line after duration if no impact
+            html += `<div style="color: #64748b; font-size: 12px; margin: 16px 0 8px 0;">∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷</div>`;
+          }
+          
           html += `<div class="section-content"><br>{TAG}<br><br>`;
-          html += `<strong>The following server(s):</strong><br><br>`;
+          html += `The following server(s):<br><br>`;
+          
+          // Add each system name as a separate line
+          systemNames.forEach(name => {
+            html += `<strong>${name}</strong><br>`;
+          });
+          
+          html += `<br>have been scheduled to reboot on ${formattedStart} as the uptime is greater than 30 days. Please notify client if needed. If there are any issues please let us know. Thank you.`;
+          html += `</div>`;
+          
+          // Skip the separate time section for this template
+          skipTimeSection = true;
+        } else if (data.reason.includes('Expected/Scheduled maintenance window') && !data.isReboot) {
+          // Split system names and format the template like uptime template
+          const systemNames = data.systemName.split('\n').filter(name => name.trim());
+          const formattedStart = formatDate(data.startTime);
+          
+          html += `<div class="subject"><strong>Scheduled Maintenance</strong></div>`;
+          html += `<div class="section-content">`;
+          html += `Start Time: <span style="color: #cbd5e1;">${formattedStart}</span><br>`;
+          html += `Duration: <span style="color: #94a3b8;">${duration}</span>`;
+          html += `</div>`;
+          
+          // Add impact section if provided
+          if (data.impact) {
+            html += `<div class="subject"><strong>Environment Impact</strong></div>`;
+            html += `<div class="section-content">${data.impact.replace(/\n/g, '<br>')}</div>`;
+            html += `<div style="color: #64748b; font-size: 12px; margin: 16px 0 8px 0;">∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷</div>`;
+          } else {
+            // Add decorative line after duration if no impact
+            html += `<div style="color: #64748b; font-size: 12px; margin: 16px 0 8px 0;">∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷</div>`;
+          }
+          
+          html += `<div class="section-content"><br>{TAG}<br><br>`;
+          html += `<strong>The following device(s):</strong><br><br>`;
           
           // Add each system name as a separate line
           systemNames.forEach(name => {
             html += `${name}<br>`;
           });
           
-          html += `<br>has/have been scheduled to reboot on ${formattedStart} as it/they has an uptime of 30+ days. Please notify client if needed. If there are any issues please let us know. Thank you.`;
+          // Build the maintenance message with inline Additional Info
+          let maintenanceMessage = `have been scheduled for maintenance on ${formattedStart}.`;
+          console.log('Additional Info:', data.additionalInfo); // Debug log
+          if (data.additionalInfo) {
+            maintenanceMessage += ` ${data.additionalInfo}`;
+          }
+          maintenanceMessage += `<br><br>Please notify client if needed. If there are any issues please let us know. Thank you.`;
+          console.log('Final Message:', maintenanceMessage); // Debug log
+          
+          html += `<br>${maintenanceMessage}`;
           html += `</div>`;
           
           // Skip the separate time section for this template
           skipTimeSection = true;
         } else if (data.reason.includes('Other (type custom reason)')) {
-          // Show custom message
-          html += `<div class="section-title"><strong>Custom Message:</strong></div>`;
-          html += `<div class="section-content">${customTextarea.value.replace(/\n/g, '<br>')}</div>`;
+          // Split system names and format the template like scheduled maintenance
+          const systemNames = data.systemName.split('\n').filter(name => name.trim());
+          const formattedStart = formatDate(data.startTime);
+          
+          html += `<div class="subject"><strong>Time | Duration</strong></div>`;
+          html += `<div class="section-content">`;
+          html += `Start Time: <span style="color: #cbd5e1;">${formattedStart}</span><br>`;
+          html += `Duration: <span style="color: #94a3b8;">${duration}</span>`;
+          html += `</div>`;
+          
+          // Add impact section if provided
+          if (data.impact) {
+            html += `<div class="subject"><strong>Environment Impact</strong></div>`;
+            html += `<div class="section-content">${data.impact.replace(/\n/g, '<br>')}</div>`;
+            html += `<div style="color: #64748b; font-size: 12px; margin: 16px 0 8px 0;">∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷</div>`;
+          } else {
+            // Add decorative line after duration if no impact
+            html += `<div style="color: #64748b; font-size: 12px; margin: 16px 0 8px 0;">∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷∷</div>`;
+          }
+          
+          html += `<div class="section-content"><br>{TAG}<br><br>`;
+          
+          // Add system names if provided
+          if (systemNames.length > 0) {
+            html += `The following device(s)/service(s)/connection(s):<br><br>`;
+            
+            // Add each system name as a separate line
+            systemNames.forEach(name => {
+              html += `<strong>${name}</strong><br>`;
+            });
+            html += `<br>`;
+          }
+          
+          // Add custom message content
+          let customMessage = customTextarea.value.replace(/\n/g, '<br>');
+          // Make first word lowercase
+          if (customMessage.trim()) {
+            const words = customMessage.trim().split(/\s+/);
+            if (words.length > 0) {
+              words[0] = words[0].toLowerCase();
+              customMessage = words.join(' ');
+            }
+          }
+          html += `${customMessage}<br><br>`;
+          html += `Please notify client if needed. If there are any issues please let us know. Thank you.`;
+          html += `</div>`;
+          
+          // Skip the separate time section for this template
+          skipTimeSection = true;
         } else {
           // Show standard reason
           html += `<div class="section-title"><strong>Reason:</strong></div>`;
           html += `<div class="section-content">${data.reason.replace(/\n/g, '<br>')}</div>`;
         }
-      }
-
-      // Only show time section if not using uptime template
-      if (!skipTimeSection && (formattedStart || duration)) {
-        const sectionTitle = data.isReboot ? 'Reboot Window:' : 'Expected Downtime:';
-        html += `<div class="section-title"><strong>${sectionTitle}</strong></div>`;
-        html += `<div class="section-content">`;
-        if (formattedStart) html += `Start Time: <span style="color: #cbd5e1;">${formattedStart}</span><br>`;
-        if (duration) html += `Duration: <span style="color: #94a3b8;">${duration}</span><br>`;
-        html += `</div>`;
-      }
-
-      if (data.impact) {
-        const impactTitle = data.isReboot ? 'Impact During Reboot:' : 'Impact:';
-        html += `<div class="section-title"><strong>${impactTitle}</strong></div>`;
-        html += `<div class="section-content">${data.impact.replace(/\n/g, '<br>')}</div>`;
       }
 
       // Update preview
@@ -2144,9 +2372,27 @@
       // Handle subject preview for all templates
       if (data.reason.includes('Server has a 30+ day uptime') && data.isReboot) {
         const dateOnly = formatDateOnly(data.startTime);
-        subjectContent.textContent = `Server Reboot(s) - ${dateOnly} - {CLIENTCODE}`;
+        const clientCode = data.clientCode || '{CLIENTCODE}';
+        subjectContent.textContent = `Server Reboot(s) - ${dateOnly} - ${clientCode}`;
+        subjectContent.classList.remove('empty');
+      } else if (data.reason.includes('Expected/Scheduled maintenance window') && !data.isReboot) {
+        const dateOnly = formatDateOnly(data.startTime);
+        const clientCode = data.clientCode || '{CLIENTCODE}';
+        subjectContent.textContent = `Maintenance - ${dateOnly} - ${clientCode}`;
+        subjectContent.classList.remove('empty');
+      } else if (data.reason.includes('Other (type custom reason)')) {
+        // Use custom subject if provided, otherwise leave empty
+        const customSubjectField = document.getElementById('customSubject');
+        if (customSubjectField && customSubjectField.value.trim()) {
+          subjectContent.textContent = customSubjectField.value.trim();
+          subjectContent.classList.remove('empty');
+        } else {
+          subjectContent.textContent = '';
+          subjectContent.classList.add('empty');
+        }
       } else {
-        subjectContent.textContent = '{Subject}';
+        subjectContent.textContent = '';
+        subjectContent.classList.add('empty');
       }
       
       // Handle message body preview
@@ -2158,14 +2404,15 @@
         preview.innerHTML = html;
       } else {
         preview.className = 'preview-content empty';
-        preview.textContent = '{Message}';
-        preview.innerHTML = '{Message}';
+        preview.textContent = '';
+        preview.innerHTML = '';
       }
     }
 
     function clearSubject() {
       const subjectContent = document.querySelector('.subject-content');
-      subjectContent.textContent = '{Subject}';
+      subjectContent.textContent = '';
+      subjectContent.classList.add('empty');
     }
 
     function copySubjectToClipboard() {
@@ -2177,11 +2424,7 @@
       }
 
       // Create a properly formatted HTML structure for copying
-      const formattedHtml = `
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #cbd5e1; font-weight: 600; font-size: 16px;">
-          ${subjectContent.textContent}
-        </div>
-      `;
+      const formattedHtml = `<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #cbd5e1; font-weight: 600; font-size: 16px;">${subjectContent.textContent}</div>`;
 
       // Try modern clipboard API first
       if (navigator.clipboard && window.ClipboardItem) {
@@ -2329,25 +2572,11 @@
       // Reset custom reason container
       document.getElementById('customReasonContainer').style.display = 'none';
       
-      // Reset toggle to REBOOT
-      setMaintenanceType(true);
-      
       // Reset times
       setDefaultTimes();
       
-      // Clear the data object to trigger placeholder display
-      const emptyData = {
-        systemName: '',
-        reason: '',
-        startTime: '',
-        durationHours: '',
-        durationMinutes: '',
-        impact: '',
-        isReboot: true
-      };
-      
-      // Update preview with empty data to show placeholders
-      updatePreviewWithData(emptyData);
+      // Clear preview
+      updatePreview();
     }
 
     function showFeedback(message, type = 'success') {
