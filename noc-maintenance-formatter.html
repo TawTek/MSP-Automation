@@ -417,7 +417,7 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
-    height: 600px;
+    height: 750px;
     display: flex;
     flex-direction: column;
   }
@@ -672,7 +672,7 @@
 
   .form-textarea {
     resize: none;
-    min-height: 110px;
+    min-height: 90px;
   }
 
   .datetime-group {
@@ -694,22 +694,104 @@
     }
   }
 
+  .duration-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  @media (max-width: 768px) {
+    .duration-group {
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+  }
+
+  .duration-input-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .duration-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .duration-input-with-arrows {
+    display: flex;
+    align-items: center;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .duration-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    padding: 10px 8px;
+    text-align: center;
+    outline: none;
+    -moz-appearance: textfield;
+  }
+
+  .duration-input::-webkit-outer-spin-button,
+  .duration-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .duration-input[type=number]::-webkit-outer-spin-button,
+  .duration-input[type=number]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .duration-arrow {
+    background: #0a0f1a;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 8px 6px;
+    font-size: 10px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .duration-arrow:hover {
+    background: var(--primary);
+    color: white;
+  }
+
+  .duration-arrow.up {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .duration-arrow.down {
+    border-top: 1px solid var(--border);
+  }
+
   .datetime-input-wrapper {
     position: relative;
     display: flex;
     align-items: stretch;
   }
 
-  .datetime-input-wrapper .form-input {
-    flex: 1;
-    padding-right: 40px;
-  }
-
   .datetime-btn {
     position: absolute;
-    right: 50px;
-    top: 50%;
-    transform: translateY(-50%);
+    left: -30px;
+    top: 10px;
     width: 20px;
     height: 20px;
     background: #0a0f1a;
@@ -725,23 +807,8 @@
     overflow: hidden;
   }
 
-  .datetime-btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-    transition: left 0.6s ease;
-  }
-
-  .datetime-btn:hover::before {
-    left: 100%;
-  }
-
   .datetime-btn:hover {
-    transform: translateY(-50%) scale(1.05);
+    color: var(--primary);
   }
 
   .datetime-btn i {
@@ -797,7 +864,7 @@
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
     transition: left 0.6s ease;
   }
 
@@ -873,6 +940,59 @@
     text-align: center;
   }
 
+  .subject-preview {
+    margin-bottom: 16px;
+    padding: 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .subject-content {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    color: #cbd5e1;
+    padding: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 12px;
+  }
+
+  .subject-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+    padding: 16px 20px;
+    background: var(--border);
+    border-top: 1px solid var(--border);
+    margin: 16px -16px -16px -16px;
+  }
+
+  .subject-actions .btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .btn-small {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+    overflow: hidden;
+  }
+
   /* Rich text preview styles */
   .preview-section .preview-content.rich-text {
     white-space: normal;
@@ -918,8 +1038,9 @@
     position: fixed;
     top: 20px;
     right: 20px;
-    background: var(--accent);
-    color: white;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
     padding: 12px 16px;
     border-radius: 4px;
     font-family: 'JetBrains Mono', monospace;
@@ -939,6 +1060,8 @@
 
   .feedback-toast.error {
     background: var(--danger);
+    border-color: var(--danger);
+    color: white;
   }
 
   /* Date Time Modal */
@@ -1346,15 +1469,9 @@
           <input type="hidden" id="maintenanceType" value="true">
         </div>
 
-        <!-- System Name -->
+        <!-- Template Selector -->
         <div class="form-group">
-          <label class="form-label required" for="systemName">System Name</label>
-          <input type="text" id="systemName" class="form-input" placeholder="e.g., DITAT1DEV01">
-        </div>
-
-        <!-- Reason -->
-        <div class="form-group">
-          <label class="form-label required" for="reason">Reason</label>
+          <label class="form-label required" for="reason">Template</label>
           <div class="custom-dropdown">
             <div class="dropdown-trigger" onclick="toggleCustomDropdown()">
               <span id="selectedReason">SELECT</span>
@@ -1365,28 +1482,50 @@
             </div>
           </div>
           <div id="customReasonContainer" class="custom-reason-container" style="display: none;">
-            <textarea id="customReason" class="form-textarea" placeholder="Enter your custom reason..."></textarea>
+            <textarea id="customReason" class="form-textarea" placeholder="Enter your custom message..."></textarea>
           </div>
         </div>
 
-        <!-- Downtime -->
+        <!-- System Name -->
         <div class="form-group">
-          <label class="form-label required">Downtime Window</label>
-          <div class="datetime-group">
-            <div class="datetime-input-wrapper">
-              <input type="datetime-local" id="startTime" class="form-input">
-              <button type="button" class="datetime-btn" onclick="openDateTimePicker('startTime')">
-                <i data-lucide="calendar"></i>
-              </button>
+          <label class="form-label required" for="systemName">System Name(s)</label>
+          <textarea id="systemName" class="form-textarea" placeholder="Enter system name(s) one per line&#10;DITAT1DEV01&#10;DITAT1DEV02&#10;DITAT1DEV03" runat="server"></textarea>
+        </div>
+
+        <!-- Starting Time -->
+        <div class="form-group">
+          <label class="form-label required">Starting Time</label>
+          <div class="datetime-input-wrapper">
+            <input type="datetime-local" id="startTime" class="form-input">
+            <button type="button" class="datetime-btn" onclick="openDateTimePicker('startTime')">
+              <i data-lucide="calendar"></i>
+            </button>
+          </div>
+          <div class="help-text">Start time in your local timezone</div>
+        </div>
+
+        <!-- Duration -->
+        <div class="form-group">
+          <label class="form-label required">Duration</label>
+          <div class="duration-group">
+            <div class="duration-input-wrapper">
+              <label class="duration-label">Hours</label>
+              <div class="duration-input-with-arrows">
+                <button type="button" class="duration-arrow down" onclick="adjustDuration('hours', -1)">▼</button>
+                <input type="number" id="durationHours" class="duration-input" min="0" max="23" value="1">
+                <button type="button" class="duration-arrow up" onclick="adjustDuration('hours', 1)">▲</button>
+              </div>
             </div>
-            <div class="datetime-input-wrapper">
-              <input type="datetime-local" id="endTime" class="form-input">
-              <button type="button" class="datetime-btn" onclick="openDateTimePicker('endTime')">
-                <i data-lucide="calendar"></i>
-              </button>
+            <div class="duration-input-wrapper">
+              <label class="duration-label">Minutes</label>
+              <div class="duration-input-with-arrows">
+                <button type="button" class="duration-arrow down" onclick="adjustDuration('minutes', -15)">▼</button>
+                <input type="number" id="durationMinutes" class="duration-input" min="0" max="45" step="15" value="0">
+                <button type="button" class="duration-arrow up" onclick="adjustDuration('minutes', 15)">▲</button>
+              </div>
             </div>
           </div>
-          <div class="help-text">Start and end times in your local timezone</div>
+          <div class="help-text">Expected maintenance duration</div>
         </div>
 
         <!-- Impact -->
@@ -1401,12 +1540,31 @@
     <section class="preview-section">
       <div class="section-header">
         <div class="section-icon">
-          <i data-lucide="eye"></i>
+          <i data-lucide="heading-1"></i>
         </div>
-        <div class="section-title">Rich Text Preview</div>
+        <div class="section-title">Subject Line</div>
+      </div>
+      <div id="subjectPreview" class="subject-preview">
+        <div class="subject-content" contenteditable="false">{Subject}</div>
+        <div class="subject-actions">
+          <button class="btn btn-primary" onclick="copySubjectToClipboard()">
+            <i data-lucide="copy"></i> COPY
+          </button>
+          <button class="btn btn-secondary" onclick="clearSubject()">
+            <i data-lucide="trash-2"></i> CLEAR ALL
+          </button>
+        </div>
+      </div>
+      
+      <!-- Message Body Section -->
+      <div class="section-header">
+        <div class="section-icon">
+          <i data-lucide="file-text"></i>
+        </div>
+        <div class="section-title">Message Body</div>
       </div>
       <div id="previewContent" class="preview-content empty" contenteditable="false">
-        Fill in the form to see the formatted preview...
+        {Message}
       </div>
       <div class="preview-actions">
         <button class="btn btn-primary" onclick="copyToClipboard()">
@@ -1444,7 +1602,7 @@
 
     function setupEventListeners() {
       // Form input listeners
-      const inputs = ['systemName', 'startTime', 'endTime', 'impact'];
+      const inputs = ['systemName', 'startTime', 'durationHours', 'durationMinutes', 'impact'];
       inputs.forEach(id => {
         const element = document.getElementById(id);
         element.addEventListener('input', updatePreview);
@@ -1456,6 +1614,21 @@
 
       // Initialize reason options
       updateReasonOptions();
+    }
+
+    function adjustDuration(type, increment) {
+      const input = document.getElementById(type === 'hours' ? 'durationHours' : 'durationMinutes');
+      const currentValue = parseInt(input.value) || 0;
+      const newValue = currentValue + increment;
+      
+      // Apply bounds
+      if (type === 'hours') {
+        input.value = Math.max(0, Math.min(23, newValue));
+      } else {
+        input.value = Math.max(0, Math.min(45, newValue));
+      }
+      
+      updatePreview();
     }
 
     function toggleCustomDropdown() {
@@ -1577,7 +1750,7 @@
       
       document.body.appendChild(modal);
       
-      // Initialize calendar
+      // Initialize calendar with current date
       const currentValue = input.value;
       const now = new Date();
       const selectedDate = currentValue ? new Date(currentValue) : now;
@@ -1705,20 +1878,20 @@
       // Clear existing options (don't add SELECT option)
       optionsContainer.innerHTML = '';
       
-      // Add predefined options based on maintenance type
+      // Add template options based on maintenance type
       const options = isReboot ? [
-        { value: 'Server has a 30+ day uptime, need to reboot to ensure patching and maintenance is current', text: 'Uptime > 30 Days' },
-        { value: 'Other (type custom reason)', text: 'Other (type custom reason)' }
+        { value: 'Server has a 30+ day uptime, need to reboot to ensure patching and maintenance is current', text: 'Uptime > 30 Days (Template)' },
+        { value: 'Other (type custom reason)', text: 'Custom Message' }
       ] : [
-        { value: 'Expected/Scheduled maintenance window', text: 'Expected/Scheduled maintenance window' },
-        { value: 'Critical security update deployment', text: 'Critical security update deployment' },
-        { value: 'Hardware replacement requiring downtime', text: 'Hardware replacement requiring downtime' },
-        { value: 'Database maintenance and optimization', text: 'Database maintenance and optimization' },
-        { value: 'Network infrastructure upgrade', text: 'Network infrastructure upgrade' },
-        { value: 'Power maintenance and UPS testing', text: 'Power maintenance and UPS testing' },
-        { value: 'Emergency system patching', text: 'Emergency system patching' },
-        { value: 'Data center cooling system maintenance', text: 'Data center cooling system maintenance' },
-        { value: 'Other (type custom reason)', text: 'Other (type custom reason)' }
+        { value: 'Expected/Scheduled maintenance window', text: 'Scheduled Maintenance' },
+        { value: 'Critical security update deployment', text: 'Security Update' },
+        { value: 'Hardware replacement requiring downtime', text: 'Hardware Replacement' },
+        { value: 'Database maintenance and optimization', text: 'Database Maintenance' },
+        { value: 'Network infrastructure upgrade', text: 'Network Upgrade' },
+        { value: 'Power maintenance and UPS testing', text: 'Power Maintenance' },
+        { value: 'Emergency system patching', text: 'Emergency Patching' },
+        { value: 'Data center cooling system maintenance', text: 'Cooling System Maintenance' },
+        { value: 'Other (type custom reason)', text: 'Custom Message' }
       ];
       
       options.forEach(option => {
@@ -1786,12 +1959,40 @@
         .slice(0, 16);
       document.getElementById('startTime').value = localDateTime;
       
-      // Set end time to exactly 1 hour from now (in local time)
-      const endTime = new Date(now.getTime() + 60 * 60 * 1000);
-      const localEndTime = new Date(endTime.getTime() - endTime.getTimezoneOffset() * 60000)
-        .toISOString()
-        .slice(0, 16);
-      document.getElementById('endTime').value = localEndTime;
+      // Set default duration to 1 hour
+      document.getElementById('durationHours').value = '1';
+      document.getElementById('durationMinutes').value = '0';
+    }
+
+    function updatePreviewWithData(data) {
+      const selectedReason = document.getElementById('selectedReason');
+      const customTextarea = document.getElementById('customReason');
+      let reasonValue = '';
+      
+      // Get reason value from dropdown or custom textarea
+      if (selectedReason.textContent === 'Other (type custom reason)') {
+        reasonValue = customTextarea.value.trim();
+      } else {
+        // Get the data-value from the selected option
+        const selectedOption = document.querySelector('.dropdown-option-custom.selected');
+        if (selectedOption) {
+          reasonValue = selectedOption.getAttribute('data-value') || '';
+        }
+      }
+      
+      // Create data object with provided data
+      const previewData = {
+        systemName: (data.systemName || '').toUpperCase(),
+        reason: reasonValue || '',
+        startTime: data.startTime || '',
+        durationHours: data.durationHours || '',
+        durationMinutes: data.durationMinutes || '',
+        impact: data.impact || '',
+        isReboot: data.isReboot
+      };
+
+      // Call the original updatePreview function with the provided data
+      updatePreview(previewData);
     }
 
     function updatePreview() {
@@ -1811,10 +2012,11 @@
       }
       
       const data = {
-        systemName: document.getElementById('systemName').value.trim(),
+        systemName: document.getElementById('systemName').value.trim().toUpperCase(),
         reason: reasonValue,
         startTime: document.getElementById('startTime').value,
-        endTime: document.getElementById('endTime').value,
+        durationHours: document.getElementById('durationHours').value,
+        durationMinutes: document.getElementById('durationMinutes').value,
         impact: document.getElementById('impact').value.trim(),
         isReboot: document.getElementById('maintenanceType').value === 'true'
       };
@@ -1822,11 +2024,14 @@
       // Remove duration from data - will be calculated automatically
       delete data.duration;
 
-      // Check if form is empty
-      if (!data.systemName && !data.reason && !data.startTime && !data.endTime && !data.impact) {
+      // Check if form is empty or template is SELECT
+      const templateSelected = document.getElementById('selectedReason').textContent !== 'SELECT';
+      const hasContent = data.systemName || data.reason || data.startTime || data.impact;
+      
+      if (!templateSelected && !hasContent) {
         const preview = document.getElementById('previewContent');
         preview.className = 'preview-content empty';
-        preview.textContent = 'Fill in the form to see the formatted preview...';
+        preview.textContent = '{Message}';
         return;
       }
 
@@ -1837,70 +2042,181 @@
         const dateOptions = {
           weekday: 'short',
           month: 'short',
-          day: 'numeric',
+          day: 'numeric'
+        };
+        const timeOptions = {
           hour: '2-digit',
           minute: '2-digit'
         };
         const datePart = date.toLocaleDateString('en-US', dateOptions);
-        const timePart = date.toLocaleTimeString('en-US', {
-          hour: '2-digit',
-          minute: '2-digit'
-        });
+        const timePart = date.toLocaleTimeString('en-US', timeOptions);
         return `${datePart} @ ${timePart}`;
       };
 
-      // Calculate duration automatically with better word formatting
+      // Format date only in MM/DD/YY format
+      const formatDateOnly = (dateStr) => {
+        if (!dateStr) return '';
+        const date = new Date(dateStr);
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        const year = date.getFullYear().toString().slice(-2);
+        return `${month}/${day}/${year}`;
+      };
+
+      // Calculate duration from input fields
       let duration = '';
-      if (data.startTime && data.endTime) {
-        const diff = new Date(data.endTime) - new Date(data.startTime);
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        
+      const hours = parseInt(data.durationHours) || 0;
+      const minutes = parseInt(data.durationMinutes) || 0;
+      
+      if (hours > 0 || minutes > 0) {
         const parts = [];
-        if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
         if (hours > 0) parts.push(`${hours} hour${hours > 1 ? 's' : ''}`);
         if (minutes > 0) parts.push(`${minutes} minute${minutes > 1 ? 's' : ''}`);
-        
         duration = parts.join(', ');
       }
 
       // Generate rich HTML preview
       const type = data.isReboot ? 'Reboot' : 'Outage';
       let html = '';
-
-      if (data.systemName) {
-        html += `<div class="subject">Subject: Maintenance Notification: ${data.systemName}</div>`;
-      }
-
-      if (data.reason) {
-        html += `<div class="section-title">Reason for ${type}:</div>`;
-        html += `<div class="section-content">${data.reason.replace(/\n/g, '<br>')}</div>`;
-      }
+      let skipTimeSection = false;
 
       const formattedStart = formatDate(data.startTime);
-      const formattedEnd = formatDate(data.endTime);
 
-      if (formattedStart || formattedEnd) {
+      if (data.reason) {
+        // Check if this is the special uptime template
+        if (data.reason.includes('Server has a 30+ day uptime') && data.isReboot) {
+          // Split system names and format the template
+          const systemNames = data.systemName.split('\n').filter(name => name.trim());
+          const formattedStart = formatDate(data.startTime);
+          
+          html += `<div class="subject"><strong>Reboot Scheduled</strong></div>`;
+          html += `<div class="section-content">`;
+          html += `Start Time: <span style="color: #cbd5e1;">${formattedStart}</span><br>`;
+          html += `Duration: <span style="color: #94a3b8;">${duration}</span>`;
+          html += `<hr style="border: none; border-top: 1px solid var(--border); margin: 16px 0 8px 0;">`;
+          html += `</div>`;
+          
+          html += `<div class="section-content"><br>{TAG}<br><br>`;
+          html += `<strong>The following server(s):</strong><br><br>`;
+          
+          // Add each system name as a separate line
+          systemNames.forEach(name => {
+            html += `${name}<br>`;
+          });
+          
+          html += `<br>has/have been scheduled to reboot on ${formattedStart} as it/they has an uptime of 30+ days. Please notify client if needed. If there are any issues please let us know. Thank you.`;
+          html += `</div>`;
+          
+          // Skip the separate time section for this template
+          skipTimeSection = true;
+        } else if (data.reason.includes('Other (type custom reason)')) {
+          // Show custom message
+          html += `<div class="section-title"><strong>Custom Message:</strong></div>`;
+          html += `<div class="section-content">${customTextarea.value.replace(/\n/g, '<br>')}</div>`;
+        } else {
+          // Show standard reason
+          html += `<div class="section-title"><strong>Reason:</strong></div>`;
+          html += `<div class="section-content">${data.reason.replace(/\n/g, '<br>')}</div>`;
+        }
+      }
+
+      // Only show time section if not using uptime template
+      if (!skipTimeSection && (formattedStart || duration)) {
         const sectionTitle = data.isReboot ? 'Reboot Window:' : 'Expected Downtime:';
-        html += `<div class="section-title">${sectionTitle}</div>`;
+        html += `<div class="section-title"><strong>${sectionTitle}</strong></div>`;
         html += `<div class="section-content">`;
-        if (formattedStart) html += `<span style="color: #cbd5e1;">Start Time</span><br><span style="color: #94a3b8;">${formattedStart}</span><br>`;
-        if (formattedEnd) html += `<span style="color: #cbd5e1;">End Time</span><br><span style="color: #94a3b8;">${formattedEnd}</span><br>`;
-        if (duration) html += `<span style="color: #cbd5e1;">Duration</span><br><span style="color: #94a3b8;">${duration}</span>`;
+        if (formattedStart) html += `Start Time: <span style="color: #cbd5e1;">${formattedStart}</span><br>`;
+        if (duration) html += `Duration: <span style="color: #94a3b8;">${duration}</span><br>`;
         html += `</div>`;
       }
 
       if (data.impact) {
         const impactTitle = data.isReboot ? 'Impact During Reboot:' : 'Impact:';
-        html += `<div class="section-title">${impactTitle}</div>`;
+        html += `<div class="section-title"><strong>${impactTitle}</strong></div>`;
         html += `<div class="section-content">${data.impact.replace(/\n/g, '<br>')}</div>`;
       }
 
       // Update preview
       const preview = document.getElementById('previewContent');
-      preview.className = 'preview-content rich-text';
-      preview.innerHTML = html;
+      const subjectPreview = document.getElementById('subjectPreview');
+      const subjectContent = document.querySelector('.subject-content');
+      
+      // Handle subject preview for all templates
+      if (data.reason.includes('Server has a 30+ day uptime') && data.isReboot) {
+        const dateOnly = formatDateOnly(data.startTime);
+        subjectContent.textContent = `Server Reboot(s) - ${dateOnly} - {CLIENTCODE}`;
+      } else {
+        subjectContent.textContent = '{Subject}';
+      }
+      
+      // Handle message body preview
+      const isTemplateSelected = document.getElementById('selectedReason').textContent !== 'SELECT';
+      const hasFormContent = data.systemName || data.reason || data.startTime || data.impact;
+      
+      if (templateSelected && hasContent) {
+        preview.className = 'preview-content rich-text';
+        preview.innerHTML = html;
+      } else {
+        preview.className = 'preview-content empty';
+        preview.textContent = '{Message}';
+        preview.innerHTML = '{Message}';
+      }
+    }
+
+    function clearSubject() {
+      const subjectContent = document.querySelector('.subject-content');
+      subjectContent.textContent = '{Subject}';
+    }
+
+    function copySubjectToClipboard() {
+      const subjectContent = document.querySelector('.subject-content');
+      
+      if (!subjectContent || !subjectContent.textContent.trim()) {
+        showFeedback('No subject to copy!', 'error');
+        return;
+      }
+
+      // Create a properly formatted HTML structure for copying
+      const formattedHtml = `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #cbd5e1; font-weight: 600; font-size: 16px;">
+          ${subjectContent.textContent}
+        </div>
+      `;
+
+      // Try modern clipboard API first
+      if (navigator.clipboard && window.ClipboardItem) {
+        const htmlBlob = new Blob([formattedHtml], { type: 'text/html' });
+        const textBlob = new Blob([subjectContent.textContent], { type: 'text/plain' });
+        const item = new ClipboardItem({ 
+          'text/html': htmlBlob, 
+          'text/plain': textBlob 
+        });
+        
+        navigator.clipboard.write([item])
+          .then(() => showFeedback('✓ Subject copied to clipboard!', 'success'))
+          .catch(() => copySubjectFallback());
+      } else {
+        copySubjectFallback();
+      }
+    }
+
+    function copySubjectFallback() {
+      const subjectContent = document.querySelector('.subject-content');
+      const textArea = document.createElement('textarea');
+      textArea.value = subjectContent.textContent;
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.select();
+      
+      try {
+        document.execCommand('copy');
+        showFeedback('✓ Subject copied to clipboard!', 'success');
+      } catch (err) {
+        showFeedback('Failed to copy subject', 'error');
+      }
+      
+      document.body.removeChild(textArea);
     }
 
     function copyToClipboard() {
@@ -1911,10 +2227,20 @@
         return;
       }
 
+      // Create formatted plain text from HTML
+      const plainText = htmlToPlainText(preview.innerHTML);
+
+      // Create a properly formatted HTML structure for copying
+      const formattedHtml = `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; line-height: 1.6;">
+          ${preview.innerHTML}
+        </div>
+      `;
+
       // Try modern clipboard API first
       if (navigator.clipboard && window.ClipboardItem) {
-        const htmlBlob = new Blob([preview.innerHTML], { type: 'text/html' });
-        const textBlob = new Blob([preview.textContent], { type: 'text/plain' });
+        const htmlBlob = new Blob([formattedHtml], { type: 'text/html' });
+        const textBlob = new Blob([plainText], { type: 'text/plain' });
         const item = new ClipboardItem({ 
           'text/html': htmlBlob, 
           'text/plain': textBlob 
@@ -1922,27 +2248,59 @@
         
         navigator.clipboard.write([item])
           .then(() => showFeedback('✓ Rich text copied to clipboard!', 'success'))
-          .catch(() => copyFallback());
+          .catch(() => copyFallback(plainText));
       } else {
-        copyFallback();
+        copyFallback(plainText);
       }
     }
 
-    function copyFallback() {
-      const text = document.getElementById('previewContent').textContent;
+    function htmlToPlainText(html) {
+      // Create a temporary div to parse HTML
+      const div = document.createElement('div');
+      div.innerHTML = html;
       
+      // Convert to plain text with line breaks
+      let text = '';
+      
+      // Handle section titles (bold)
+      div.querySelectorAll('.section-title').forEach(element => {
+        text += element.textContent + '\n';
+      });
+      
+      // Handle section content
+      div.querySelectorAll('.section-content').forEach(element => {
+        const content = element.innerHTML
+          .replace(/<br\s*\/?>/gi, '\n')  // Convert <br> to newlines
+          .replace(/<[^>]*>/g, '')     // Remove other HTML tags
+          .replace(/&nbsp;/g, ' ')     // Convert &nbsp; to spaces
+          .trim();
+        text += content + '\n\n';
+      });
+      
+      // Handle subject lines
+      div.querySelectorAll('.subject').forEach(element => {
+        text += element.textContent + '\n\n';
+      });
+      
+      // Handle horizontal rules
+      text = text.replace(/<hr[^>]*>/gi, '────────────────────────────────\n');
+      
+      return text.trim();
+    }
+
+    function copyFallback(plainText) {
       if (navigator.clipboard) {
-        navigator.clipboard.writeText(text)
+        navigator.clipboard.writeText(plainText)
           .then(() => showFeedback('✓ Text copied to clipboard!', 'success'))
           .catch(() => showFeedback('Failed to copy to clipboard', 'error'));
       } else {
-        // Legacy fallback
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.left = '-9999px';
-        document.body.appendChild(textarea);
-        textarea.select();
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = plainText;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
         
         try {
           document.execCommand('copy');
@@ -1951,121 +2309,45 @@
           showFeedback('Failed to copy to clipboard', 'error');
         }
         
-        document.body.removeChild(textarea);
+        document.body.removeChild(textArea);
       }
     }
 
     function clearForm() {
-      // Create themed confirmation modal
-      const modal = document.createElement('div');
-      modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.7);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-        animation: fadeIn 0.3s ease;
-      `;
+      // Clear form fields
+      document.getElementById('systemName').value = '';
+      document.getElementById('impact').value = '';
+      document.getElementById('customReason').value = '';
+      document.getElementById('customReasonContainer').style.display = 'none';
       
-      modal.innerHTML = `
-        <div style="
-          background: var(--card);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 24px;
-          max-width: 400px;
-          width: 90%;
-          animation: slideUp 0.3s ease;
-        ">
-          <div style="
-            color: #cbd5e1;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 16px;
-            text-align: center;
-          ">Are you sure you want to clear all fields?</div>
-          <div style="
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-          ">
-            <button id="confirmClear" style="
-              background: var(--primary);
-              color: white;
-              border: 1px solid var(--primary);
-              border-radius: 4px;
-              padding: 8px 16px;
-              font-family: 'JetBrains Mono', monospace;
-              font-size: 11px;
-              font-weight: 600;
-              text-transform: uppercase;
-              letter-spacing: 0.08em;
-              cursor: pointer;
-              transition: all 0.2s ease;
-            ">Clear All</button>
-            <button id="cancelClear" style="
-              background: transparent;
-              color: var(--muted);
-              border: 1px solid var(--border);
-              border-radius: 4px;
-              padding: 8px 16px;
-              font-family: 'JetBrains Mono', monospace;
-              font-size: 11px;
-              font-weight: 600;
-              text-transform: uppercase;
-              letter-spacing: 0.08em;
-              cursor: pointer;
-              transition: all 0.2s ease;
-            ">Cancel</button>
-          </div>
-        </div>
-      `;
+      // Reset dropdown
+      document.getElementById('selectedReason').textContent = 'SELECT';
+      document.querySelectorAll('.dropdown-option-custom').forEach(opt => {
+        opt.classList.remove('selected');
+      });
       
-      document.body.appendChild(modal);
+      // Reset custom reason container
+      document.getElementById('customReasonContainer').style.display = 'none';
       
-      // Add event listeners
-      document.getElementById('confirmClear').onclick = () => {
-        // Clear form fields
-        document.getElementById('systemName').value = '';
-        document.getElementById('impact').value = '';
-        document.getElementById('customReason').value = '';
-        document.getElementById('customReasonContainer').style.display = 'none';
-        
-        // Reset dropdown
-        document.getElementById('selectedReason').textContent = 'SELECT';
-        document.querySelectorAll('.dropdown-option-custom').forEach(opt => {
-          opt.classList.remove('selected');
-        });
-        document.querySelector('.dropdown-option-custom[data-value=""]').classList.add('selected');
-        
-        // Reset toggle to OUTAGE
-        setMaintenanceType(false);
-        
-        // Reset times
-        setDefaultTimes();
-        
-        // Update preview
-        updatePreview();
-        showFeedback('Form cleared!', 'success');
-        document.body.removeChild(modal);
+      // Reset toggle to REBOOT
+      setMaintenanceType(true);
+      
+      // Reset times
+      setDefaultTimes();
+      
+      // Clear the data object to trigger placeholder display
+      const emptyData = {
+        systemName: '',
+        reason: '',
+        startTime: '',
+        durationHours: '',
+        durationMinutes: '',
+        impact: '',
+        isReboot: true
       };
       
-      document.getElementById('cancelClear').onclick = () => {
-        document.body.removeChild(modal);
-      };
-      
-      // Close on outside click
-      modal.onclick = (e) => {
-        if (e.target === modal) {
-          document.body.removeChild(modal);
-        }
-      };
+      // Update preview with empty data to show placeholders
+      updatePreviewWithData(emptyData);
     }
 
     function showFeedback(message, type = 'success') {
