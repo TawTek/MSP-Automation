@@ -237,10 +237,27 @@ function Invoke-AppInstaller {
                 }
                 "Uninstall" {
                     $GUID = Get-GUID -App $Name
+                    $UninstallString = Get-UninstallString -App $Name
+
+                    # Disable uninstall prevention BEFORE attempting uninstall
+                    try {
+                        if ($NinjaDir.Success) {
+                            $InstallDirectory = $NinjaDir.Path
+                            Write-Log -Info "Disabling uninstall prevention from: $InstallDirectory"
+                            Start-Process "$InstallDirectory\NinjaRMMAgent.exe" -ArgumentList "-disableUninstallPrevention NOUI" -Wait
+                            Write-Log -Pass "Uninstall prevention disabled successfully"
+                            Start-Sleep -Seconds 5
+                        } else {
+                            Write-Log -Warn "NinjaRMMAgent.exe not found, skipping uninstall prevention disable"
+                        }
+                    } catch {
+                        Write-Log -Warn "Failed to disable uninstall prevention: $($_.Exception.Message)"
+                    }
+    
                     switch ($true) {
-                        {$GUID} {
-                            # GUID based uninstall
-                            Write-Log -Pass "Found GUID: $GUID"
+                        { $GUID -match "^\{[A-F0-9\-]+\}$" } {
+                            # MSI GUID based uninstall
+                            Write-Log -Pass "Found MSI GUID: $GUID"
                             $ProcessExe = "msiexec.exe"
                             $ArgList    = if ($MsiUninstall) {
                                 ($MsiUninstall -join " ") -replace "`"[^`"]*\.msi`"", $GUID -replace "{{LogPath}}", $LogPath
@@ -249,41 +266,47 @@ function Invoke-AppInstaller {
                             }
                             break
                         }
-                        {$Path -and (Test-Path $Path)} {
-                            # File based uninstall
-                            Write-Log -Info "Using installer: $Path"
-                            switch -Wildcard ($Path) {
-                                "*.msi" {
-                                    $ProcessExe = "msiexec.exe"
-                                    $ArgList    = if ($MsiUninstall) {
-                                        ($MsiUninstall -join " ") -replace "{{LogPath}}", $LogPath
-                                    } else {
-                                        (@("/x", "`"$Path`"", "/qn", "/norestart", "/L*V", "`"$LogPath`"")) -join " "
-                                    }
-                                }
-                                "*.exe" {
-                                    $ProcessExe = $Path
-                                    $ArgList    = if ($ExeUninstall) {
-                                        ($ExeUninstall -join " ") -replace "{{LogPath}}", $LogPath -split " "
-                                    } else {
-                                        @("/uninstall", "/quiet", "/norestart", "/log", "`"$LogPath`"")
-                                    }
-                                }
-                                default {
-                                    Write-Log -Fail "Unknown uninstaller type for $Name."
-                                    throw "Unknown uninstaller type for $Name."
-                                }
-                            }
+                        { $UninstallString } {
+                            # EXE based uninstall
+                            Write-Log -Pass "Found EXE uninstall string: $UninstallString"
+                            $ProcessExe = "cmd.exe"
+                            $ArgList = @("/c", $UninstallString)
                             break
                         }
                         default {
-                            Write-Log -Fail "No GUID found or uninstall file path provided for $Name."
-                            exit 1
+                            if ($Path -and (Test-Path $Path)) {
+                                # Default file-based uninstall (fallback)
+                                Write-Log -Info "Using default installer: $Path"
+                                switch -Wildcard ($Path) {
+                                    "*.msi" {
+                                        $ProcessExe = "msiexec.exe"
+                                        $ArgList = if ($MsiUninstall) {
+                                            ($MsiUninstall -join " ") -replace "{{LogPath}}", $LogPath
+                                        } else {
+                                            (@("/x", "`"$Path`"", "/qn", "/norestart", "/L*V", "`"$LogPath`"")) -join " "
+                                        }
+                                    }
+                                    "*.exe" {
+                                        $ProcessExe = $Path
+                                        $ArgList = if ($ExeUninstall) {
+                                            ($ExeUninstall -join " ") -replace "{{LogPath}}", $LogPath -split " "
+                                        } else {
+                                            @("/uninstall", "/quiet", "/norestart", "/log", "`"$LogPath`"")
+                                        }
+                                    }
+                                    default {
+                                        Write-Log -Fail "Unknown uninstaller type for $Name."
+                                        throw "Unknown uninstaller type for $Name."
+                                    }
+                                }
+                            } else {
+                                Write-Log -Fail "No GUID, uninstall string, or installer file path provided for $Name."
+                                throw "No GUID, uninstall string, or installer file path provided for $Name."
+                            }
                         }
                     }
                 }
             }
-
             Write-Log -Info "$ArgList"
             Write-Log -Info "Logfile location: $LogPath"
             Write-Log -Info "Attempting to $Action $Name."
@@ -829,6 +852,31 @@ function Get-GUID {
     }
 }
 
+function Get-UninstallString {
+    param(
+        [Parameter(Mandatory)]
+        [string]$App
+    )
+    
+    $RegKeyArch = if ([Environment]::Is64BitOperatingSystem) { "WOW6432Node" } else { "" }
+    $RegKeyUninstall = "HKLM:\SOFTWARE\$RegKeyArch\Microsoft\Windows\CurrentVersion\Uninstall"
+
+    Write-Log -Info "Searching for $App uninstall string..."
+
+    # Look for EXE-based uninstall string
+    $UninstallString = Get-ItemProperty -Path "$RegKeyUninstall\*" -EA SilentlyContinue |
+                       Where-Object { $_.DisplayName -like "*$App*" -and $_.UninstallString -match '\.exe' } |
+                       Select-Object -ExpandProperty UninstallString -EA SilentlyContinue | Select-Object -First 1
+
+    if ($UninstallString) {
+        Write-Log -Info "Found EXE uninstall string: $UninstallString"
+        return $UninstallString
+    } else {
+        Write-Log -Info "No EXE uninstall string found for $App"
+        return $null
+    }
+}
+
 function Set-Dir {
 
     <#
@@ -1004,7 +1052,7 @@ function Write-Log {
         [Parameter(ParameterSetName = "HeaderEnd")][switch]$HeaderEnd,
         [Parameter(ParameterSetName = "SystemInfo")][switch]$SystemInfo,
 
-        # Message parameter
+        # Message parameter with multiple parameter sets
         [Parameter(Position = 0, ParameterSetName = "Info")]
         [Parameter(Position = 0, ParameterSetName = "Pass")]
         [Parameter(Position = 0, ParameterSetName = "Warn")]
@@ -1014,38 +1062,32 @@ function Write-Log {
         [string]$Message,
 
         # Log configuration
-        [string]$LogPath    = $LogFile,
-        [string]$Decoration = "─",
-        [int]$HeaderWidth   = $(if ($NinjaConsole) { $NinjaConsole } else { 120 })
+        [string]$LogPath = $LogFile,
+        [string]$Decoration = "-",
+        [int]$HeaderWidth = $(if ($NinjaConsole) { 107 } else { 120 })
     )
+
+    # Handle logfile failure tracking and recovery
+    switch ($true) {
+        { [string]::IsNullOrWhiteSpace($LogPath) -and -not $Script:LogfileFail } {
+            Write-Host "[WARN] Logfile creation failed, outputting to console only."
+            $Script:LogfileFail = $true # Display logfile failure warning once
+        }
+        { -not [string]::IsNullOrWhiteSpace($LogPath) -and $Script:LogfileFail } {
+            $Script:LogfileFail = $false  # Reset since logfile is now valid
+        }
+    }
 
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
-    # Handle logfile failure tracking and recovery
-    if ([string]::IsNullOrWhiteSpace($LogPath) -and -not $Script:LogfileFail) {
-        Write-Host "[WARN] Logfile creation failed, outputting to console only."
-        $Script:LogfileFail = $true
-    }
-
-    # Reset flag if logpath becomes valid again
-    if (-not [string]::IsNullOrWhiteSpace($LogPath) -and $Script:LogfileFail) {
-        $Script:LogfileFail = $false
-    }
-
     if ($SystemInfo) {
-        $Title           = "SYSTEM INFORMATION"
-        $TitleWithSpaces = " $Title "
-        $AvailableWidth  = $HeaderWidth - 1
-        
-        $TotalPadding = $AvailableWidth - $TitleWithSpaces.Length
-        $LeftPadding  = [math]::Floor($TotalPadding / 2)
-        $RightPadding = $TotalPadding - $LeftPadding
-        
-        $TopLine    = ('═' * $LeftPadding) + $TitleWithSpaces + ('═' * $RightPadding)
-        $BottomLine = '═' * $AvailableWidth
-    
-        $SystemInfoContent = @"
-$TopLine
+    $title = "SYSTEM INFORMATION"  # No spaces - 19 characters
+    $sideLength = [math]::Floor((($HeaderWidth - 1) - ($title.Length + 2)) / 2)  # -1 for VSCode, +2 for spaces
+    $topLine = ('>' * $sideLength) + " $title " + ('<' * $sideLength)
+    $bottomLine = '>' * ($HeaderWidth - 1)  # Subtract 1 for VSCode
+
+    $SystemInfoContent = @"
+$topLine
 Execution Time:   $($TimeStamp)
 Executed By:      $($env:USERDOMAIN)\$($env:USERNAME)
 Host Computer:    $($env:COMPUTERNAME)
@@ -1053,11 +1095,11 @@ PS Version:       $($PSVersionTable.PSVersion)
 Process ID:       $PID
 C: Drive Free:    $(try { [math]::Round((Get-PSDrive C).Free / 1GB, 2) } catch { "N/A" }) GB
 Total Memory:     $(try { [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2) } catch { "N/A" }) GB
-$BottomLine
+$bottomLine
 "@
-        Write-Host "`n$SystemInfoContent" -ForegroundColor "DarkGray"
-        if (-not $script:LogfileFail) { $SystemInfoContent | Out-File -FilePath $LogPath -Encoding UTF8 }
-        return
+    Write-Host "`n$SystemInfoContent" -ForegroundColor "DarkGray"
+    if (-not $script:LogfileFail) { $SystemInfoContent | Out-File -FilePath $LogPath -Encoding UTF8 }
+    return
     }
 
     if ($Header) {
@@ -1075,7 +1117,7 @@ $BottomLine
 
         $LeftPadding  = [math]::Floor($TotalPadding / 2)
         $RightPadding = $TotalPadding - $LeftPadding
-        $HeaderText   = "`n$($Decoration * $LeftPadding)$TextWithSpaces$($Decoration * $RightPadding)"
+        $HeaderText = "`n$($Decoration * $LeftPadding)$TextWithSpaces$($Decoration * $RightPadding)"
 
         Write-Host $HeaderText -ForegroundColor "DarkGray"
         if (-not $script:LogfileFail) { $HeaderText | Out-File -FilePath $LogPath -Append -Encoding UTF8 }
@@ -1105,19 +1147,19 @@ $BottomLine
     switch ($PSCmdlet.ParameterSetName) {
         "Info" {
             $ConsoleColor = "White"
-            $FilePrefix   = "[INFO]"
+            $FilePrefix = "[INFO]"
         }
         "Pass" {
             $ConsoleColor = "DarkCyan"
-            $FilePrefix   = "[PASS]"
+            $FilePrefix = "[PASS]"
         }
         "Warn" {
             $ConsoleColor = "Yellow"
-            $FilePrefix   = "[WARN]"
+            $FilePrefix = "[WARN]"
         }
         "Fail" {
             $ConsoleColor = "Red"
-            $FilePrefix   = "[FAIL]"
+            $FilePrefix = "[FAIL]"
         }
     }
 
@@ -1374,8 +1416,7 @@ if (-not $env:IS_CHILD_PROCESS -and $Config.Workflow) {
 
     # Set environment variable so child process knows it's already a child
     Start-Process -FilePath "powershell.exe" -ArgumentList @(
-        "-NoProfile",
-        "-Command", "`$env:IS_CHILD_PROCESS='1'; & `"$PSCommandPath`""
+        "-NoProfile", "-Command", "`$env:IS_CHILD_PROCESS='1'; & `"$PSCommandPath`""
     ) -WindowStyle Hidden
 
     Write-Log -Pass "$($Config.Name) $($Config.Workflow.ToLower()) handed off to child process, closing parent context."
