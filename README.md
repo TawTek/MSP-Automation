@@ -30,3 +30,8 @@ cd RMM-PowerShell-Scripts
 # Run a script locally (example)
 .\Scripts\Some-Script.ps1 -WhatIf
 ```
+
+## Disclaimer
+- These scripts are provided as‑is with no warranty.
+- Always test in a lab or non‑production environment before deploying broadly across client devices.
+- Use them at your own risk and adapt them to meet your organization’s standards and compliance requirements.
