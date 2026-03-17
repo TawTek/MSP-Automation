@@ -1,4 +1,5 @@
-This repository contains a curated collection of PowerShell scripts designed for use with Remote Monitoring and Management (RMM) platforms in a Managed Service Provider (MSP) environment.  
+This repository contains a curated collection of PowerShell scripts designed for use with Remote Monitoring and Management (RMM) platforms in a Managed Service Provider (MSP) environment.
+
 The goal is to provide reusable, well-documented automation that improves consistency, reduces technician toil, and standardizes how common tasks are executed across client endpoints.
 
 > Target platforms: Windows 10/11 and Windows Server (PowerShell 5.1+ and/or PowerShell 7, depending on script).
