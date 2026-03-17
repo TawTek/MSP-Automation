@@ -3,23 +3,70 @@ function Get-VSCodePSSnippetFile {
     #region LOGIC -----------------------------------------------------------------------------------------------------------
     <#
     [SUMMARY]
-    Determine the path to the PowerShell snippets file for VS Code based on the operating system.
+    Determine the path to the PowerShell snippets file for VS Code/Windsurf/Cursor/Zed based on the operating system and editor.
 
     [LOGIC]
-    1. Initializes $BasePath variable for VS Code user snippets based on OS:
-       - Linux: ~/.config/Code/User/snippets
-       - macOS: ~/Library/Application Support/Code/User/snippets
-       - Windows: %APPDATA%\Code\User\snippets (default)
-    2. Combines the $BasePath with 'powershell.json' and returns the full path
+    1. Detects editor (VS Code, Windsurf, VSCodium, Cursor, Zed) and operating system
+    2. Checks for existing snippet paths in order of preference
+    3. Returns the first valid path found, or creates the directory structure
     #>
     #endregion -------------------------------------------------------------------------------------------------------------
 
-    $BasePath = switch ($true) {
-        { $PSVersionTable.Platform -eq 'Unix' } { Join-Path $HOME '.config/Code/User/snippets'; break }
-        { $PSVersionTable.Platform -eq 'MacOS' } { Join-Path $HOME 'Library/Application Support/Code/User/snippets'; break }
-        default { Join-Path $env:APPDATA 'Windsurf\User\snippets' }
+    $platform = $PSVersionTable.Platform
+    $isWindowsOS = $platform -eq 'Win32NT' -or $null -eq $platform
+    
+    # Define editor snippet paths by platform
+    $editorPaths = @{
+        Windows = @{
+            'VS Code'  = "$env:APPDATA\Code\User\snippets\powershell.json"
+            'VSCodium' = "$env:APPDATA\VSCodium\User\snippets\powershell.json"
+            'Windsurf' = "$env:APPDATA\Windsurf\User\snippets\powershell.json"
+            'Cursor'   = "$env:APPDATA\Cursor\User\snippets\powershell.json"
+            'Zed'      = "$env:APPDATA\Zed\User\snippets\powershell.json"
+            'VSCode-I' = "$env:APPDATA\Code - Insiders\User\snippets\powershell.json"
+        }
+        
+        Unix = @{
+            'VS Code'  = "$HOME/.config/Code/User/snippets/powershell.json"
+            'VSCodium' = "$HOME/.config/VSCodium/User/snippets/powershell.json"
+            'Windsurf' = "$HOME/.config/windsurf/User/snippets/powershell.json"
+            'Cursor'   = "$HOME/.config/cursor/User/snippets/powershell.json"
+            'Zed'      = "$HOME/.config/zed/User/snippets/powershell.json"
+        }
+        
+        MacOS = @{
+            'VS Code'  = "$HOME/Library/Application Support/Code/User/snippets/powershell.json"
+            'VSCodium' = "$HOME/Library/Application Support/VSCodium/User/snippets/powershell.json"
+            'Windsurf' = "$HOME/Library/Application Support/windsurf/User/snippets/powershell.json"
+            'Cursor'   = "$HOME/Library/Application Support/cursor/User/snippets/powershell.json"
+            'Zed'      = "$HOME/Library/Application Support/zed/User/snippets/powershell.json"
+        }
     }
-    return Join-Path $BasePath 'powershell.json'
+
+    # Get paths for current platform
+    $platformKey = if ($isWindowsOS) { 'Windows' } elseif ($platform -eq 'Unix') { 'Unix' } else { 'MacOS' }
+    $possiblePaths = $editorPaths[$platformKey].Values
+
+    # Return the first existing path (more efficient than foreach)
+    $existingPath = $possiblePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($existingPath) {
+        return $existingPath
+    }
+
+    # If no existing path found, return the first valid option and create directory
+    $fallbackPath = $possiblePaths[0]
+    $directory = Split-Path $fallbackPath -Parent
+    
+    if (-not (Test-Path $directory)) {
+        try {
+            New-Item -Path $directory -ItemType Directory -Force | Out-Null
+            Write-Host "Created snippets directory: $directory" -ForegroundColor Green
+        } catch {
+            Write-Warning "Could not create snippets directory: $directory"
+        }
+    }
+    
+    return $fallbackPath
 }
 
 function Convert-ToVSCodeSnippet {
