@@ -23,10 +23,12 @@
 
     [PHASE 3 - UNINSTALLATION (if defined)]
     4. Agent Removal
-       - Scans registry for existing installation GUID
-       - Uses msiexec /x with GUID for clean uninstall
-       - Falls back to file-based uninstall if GUID not found
-       - Disables uninstall prevention before removal
+       - Priority-based uninstall: MSI GUID → EXE uninstall string → File-based fallback
+       - Scans registry for MSI GUID and EXE uninstall strings
+       - Uses msiexec /x with GUID for MSI-based uninstall
+       - Uses native EXE uninstall command from registry
+       - Falls back to file-based uninstall if neither found
+       - Disables uninstall prevention before removal using discovered installation directory
 
     [PHASE 4 - CLEANUP (if defined)]
     5. Component Removal
@@ -77,8 +79,8 @@
 
     ===ERROR HANDLING===
     - Comprehensive try/catch blocks throughout execution
-    - Exit code validation with specific failure messages
-    - Multiple uninstall methods for reliable removal
+    - Exit code validation with specific failure messages (0=success, 3010=reboot required)
+    - Multiple uninstall methods for reliable removal across different installation types
     - Download retry logic with method fallback
     - Graceful degradation when components not found
     - Orphaned registry key detection and reporting
@@ -105,8 +107,8 @@
 .NOTES
     Developer: TawTek
     Created  : 2023-01-01
-    Updated  : 2025-11-04
-    Version  : 12.0
+    Updated  : 2026-03-15
+    Version  : 13.0
 
     [Reference]
     > https://ninjarmm.zendesk.com/hc/en-us/articles/36038775278349-Custom-Script-NinjaOne-Agent-Removal-Windows
@@ -147,11 +149,12 @@ function Invoke-AppInstaller {
        - Use custom argument arrays if provided, with log path templating.
 
     3. Uninstall Action Processing:
-       - Primary Method: Retrieve application GUID via registry search for GUID-based uninstall.
-       - Fallback Method: Use provided installer file path for file-based uninstall.
-       - MSI: Build msiexec /x arguments with GUID or file path.
-       - EXE: Build uninstall arguments with silent flags.
-       - Custom argument support with GUID/file path substitution.
+       - Priority-based uninstall: MSI GUID → EXE uninstall string → File-based fallback
+       - MSI: Build msiexec /x arguments with GUID for MSI-based uninstall
+       - EXE: Use native uninstall command from registry (no additional flags)
+       - Fallback: Use provided installer file path for file-based uninstall
+       - Custom argument support with GUID/file path substitution
+       - Disables uninstall prevention using discovered installation directory
 
     4. Process Execution:
        - Start installer process (msiexec.exe or direct EXE) with built argument list.
