@@ -219,7 +219,7 @@ function Compare-Endpoints {
     }
 
     $Comparison = foreach ($Item in @(
-        @{ Devices = $script:Missing_Ninja; Platform = 'NinjaOne' },
+        @{ Devices = $script:Missing_Ninja; Platform = 'NinjaOne' }
     )) {
         foreach ($Device in $Item.Devices) {
             [PSCustomObject]@{
